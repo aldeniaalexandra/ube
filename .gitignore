@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.superpowers/
+.worktrees/
+node_modules/
+coverage/
+*.tmp

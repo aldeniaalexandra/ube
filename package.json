@@ -1,0 +1,29 @@
+{
+  "name": "ube-contribution-companion",
+  "version": "0.1.0",
+  "description": "A tiny original pixel companion for your GitHub contribution year.",
+  "type": "module",
+  "bin": {
+    "ube": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "generate:fixture": "node dist/cli.js generate --config ube.config.json --fixture tests/fixtures/calendar.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "gifenc": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "license": "MIT"
+}

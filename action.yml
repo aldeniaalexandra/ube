@@ -1,0 +1,27 @@
+name: Ube contribution companion
+description: Render an original pixel companion walking across a GitHub contribution year.
+author: Aldenia Alexandra
+
+inputs:
+  config:
+    description: Path to ube.config.json.
+    required: false
+    default: ube.config.json
+  token:
+    description: GitHub token used to read public contribution data.
+    required: true
+  output:
+    description: Optional output path override.
+    required: false
+
+outputs:
+  path:
+    description: Absolute path of the generated GIF.
+
+runs:
+  using: node24
+  main: dist/action.js
+
+branding:
+  icon: activity
+  color: purple

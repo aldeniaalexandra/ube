@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "Ube",
+  "cellSize": 4,
+  "anchor": {
+    "x": 6,
+    "y": 7
+  },
+  "palette": {
+    "P": "#8A63E8",
+    "H": "#BFAAFF",
+    "S": "#6845C6",
+    "E": "#171225"
+  },
+  "frames": {
+    "idle": [
+      "       HH   ",
+      "     HPPP   ",
+      "   HPPPPPH  ",
+      "  HPPPPPPPH ",
+      "  PEPPEPPPP ",
+      "  PPPPPPPPP ",
+      "   SPPPPPS  ",
+      "   PP   PP  "
+    ],
+    "blink": [
+      "       HH   ",
+      "     HPPP   ",
+      "   HPPPPPH  ",
+      "  HPPPPPPPH ",
+      "  PSPPSPPPP ",
+      "  PPPPPPPPP ",
+      "   SPPPPPS  ",
+      "   PP   PP  "
+    ],
+    "walk": [
+      [
+        "       HH   ",
+        "     HPPP   ",
+        "   HPPPPPH  ",
+        "  HPPPPPPPH ",
+        "  PEPPEPPPP ",
+        "  PPPPPPPPP ",
+        "   SPPPPPS  ",
+        "   PP   PP  "
+      ],
+      [
+        "       HH   ",
+        "     HPPP   ",
+        "   HPPPPPH  ",
+        "  HPPPPPPPH ",
+        "  PEPPEPPPP ",
+        "  PPPPPPPPP ",
+        "   SPPPPPS  ",
+        "  PP     PP "
+      ],
+      [
+        "       HH   ",
+        "     HPPP   ",
+        "   HPPPPPH  ",
+        "  HPPPPPPPH ",
+        "  PEPPEPPPP ",
+        "  PPPPPPPPP ",
+        "   SPPPPPS  ",
+        "    PP PP   "
+      ],
+      [
+        "       HH   ",
+        "     HPPP   ",
+        "   HPPPPPH  ",
+        "  HPPPPPPPH ",
+        "  PEPPEPPPP ",
+        "  PPPPPPPPP ",
+        "   SPPPPPS  ",
+        "    PP  PP  "
+      ]
+    ]
+  }
+}

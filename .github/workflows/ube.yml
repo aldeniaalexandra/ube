@@ -1,0 +1,46 @@
+name: Refresh Ube
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+  push:
+    branches: [main, master]
+    paths:
+      - ".github/workflows/ube.yml"
+      - "action.yml"
+      - "characters/**"
+      - "dist/**"
+      - "package-lock.json"
+      - "package.json"
+      - "scripts/**"
+      - "src/**"
+      - "ube.config.json"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out profile
+        uses: actions/checkout@v6
+
+      - name: Render contribution companion
+        uses: ./
+        with:
+          token: ${{ github.token }}
+
+      - name: Commit refreshed banner
+        shell: bash
+        run: |
+          if git diff --quiet -- assets/ube.gif; then
+            echo "Ube is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- assets/ube.gif
+          git commit -m "chore: refresh Ube contribution banner"
+          git push
