@@ -850,16 +850,22 @@ import { resolve as resolve3 } from "node:path";
 // src/character/load.ts
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+
+// src/character/validate.ts
 var FRAME_WIDTH = 12;
 var FRAME_HEIGHT = 8;
 var HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 var CharacterError = class extends Error {
   name = "CharacterError";
 };
-async function loadCharacter(path) {
-  const characterPath = resolve(path);
-  const raw = await readFile(characterPath, "utf8");
-  return validateCharacter(parseJson(raw, characterPath));
+function parseCharacterJson(raw, path) {
+  try {
+    return validateCharacter(JSON.parse(raw));
+  } catch (error) {
+    if (error instanceof CharacterError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CharacterError(`${path}: invalid JSON: ${message}`);
+  }
 }
 function validateCharacter(value) {
   const pack = requireObject(value, "character");
@@ -953,14 +959,6 @@ function validateFrame(value, path, palette) {
   });
   return Object.freeze(rows);
 }
-function parseJson(raw, path) {
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new CharacterError(`${path}: invalid JSON: ${message}`);
-  }
-}
 function requireObject(value, path) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new CharacterError(`${path} must be an object`);
@@ -990,22 +988,106 @@ function requireIntegerInRange(value, path, minimum, maximum) {
   return value;
 }
 
+// src/character/load.ts
+async function loadCharacter(path) {
+  const characterPath = resolve(path);
+  const raw = await readFile(characterPath, "utf8");
+  try {
+    return parseCharacterJson(raw, characterPath);
+  } catch (error) {
+    if (error instanceof CharacterError && !error.message.startsWith(characterPath)) {
+      throw new CharacterError(`${characterPath}: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
 // src/config/load.ts
 import { readFile as readFile2 } from "node:fs/promises";
 import { dirname, resolve as resolve2 } from "node:path";
+
+// src/experience/defaults.ts
+var DEFAULT_TARGET_BYTES = 2e6;
+var DEFAULT_HARD_MAX_BYTES = 5e6;
+function createDefaultExperience() {
+  return {
+    habitat: "moonlit-garden",
+    calendar: { timezone: "UTC", hemisphere: "north" },
+    stats: { period: "displayed-weeks", showStreak: true, showTotal: true },
+    identity: {
+      enabled: false,
+      name: "",
+      role: "",
+      style: "quiet-label"
+    },
+    link: "",
+    budget: {
+      targetBytes: DEFAULT_TARGET_BYTES,
+      hardMaxBytes: DEFAULT_HARD_MAX_BYTES
+    }
+  };
+}
+function normalizeExperience(input) {
+  const defaults = createDefaultExperience();
+  if (input === void 0) return defaults;
+  const calendar = input.calendar;
+  const stats = input.stats;
+  const identity = input.identity;
+  const budget = input.budget;
+  return {
+    habitat: "moonlit-garden",
+    calendar: {
+      timezone: typeof calendar?.timezone === "string" ? calendar.timezone : defaults.calendar.timezone,
+      hemisphere: isHemisphere(calendar?.hemisphere) ? calendar.hemisphere : defaults.calendar.hemisphere
+    },
+    stats: {
+      period: isStatsPeriod(stats?.period) ? stats.period : defaults.stats.period,
+      showStreak: typeof stats?.showStreak === "boolean" ? stats.showStreak : defaults.stats.showStreak,
+      showTotal: typeof stats?.showTotal === "boolean" ? stats.showTotal : defaults.stats.showTotal
+    },
+    identity: {
+      enabled: typeof identity?.enabled === "boolean" ? identity.enabled : defaults.identity.enabled,
+      name: typeof identity?.name === "string" ? identity.name : defaults.identity.name,
+      role: typeof identity?.role === "string" ? identity.role : defaults.identity.role,
+      style: isIdentityStyle(identity?.style) ? identity.style : defaults.identity.style
+    },
+    link: typeof input.link === "string" ? input.link : defaults.link,
+    budget: {
+      targetBytes: typeof budget?.targetBytes === "number" ? budget.targetBytes : defaults.budget.targetBytes,
+      hardMaxBytes: typeof budget?.hardMaxBytes === "number" ? budget.hardMaxBytes : defaults.budget.hardMaxBytes
+    }
+  };
+}
+function isHemisphere(value) {
+  return value === "north" || value === "south";
+}
+function isStatsPeriod(value) {
+  return value === "displayed-weeks" || value === "calendar-year";
+}
+function isIdentityStyle(value) {
+  return value === "quiet-label" || value === "combined-sign";
+}
 
 // src/config/schema.ts
 var USERNAME_PATTERN = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
 var HEX_COLOR_PATTERN2 = /^#[0-9a-f]{6}$/i;
 var MAX_FRAME_COUNT = 300;
+var MAX_LINK_LENGTH = 2048;
+var MAX_IDENTITY_LENGTH = 80;
+var MIN_TARGET_BYTES = 1e5;
+var MAX_HARD_MAX_BYTES = 5e6;
 var ConfigError = class extends Error {
   name = "ConfigError";
 };
 function validateConfig(value) {
   const config = requireObject2(value, "config");
-  assertOnlyKeys2(config, ["version", "github", "character", "output", "theme"], "config");
-  if (config.version !== 1) {
-    throw new ConfigError("version must be 1");
+  assertOnlyKeys2(
+    config,
+    ["version", "github", "character", "output", "theme", "experience"],
+    "config"
+  );
+  if (config.version !== 1 && config.version !== 2) {
+    throw new ConfigError("version must be 1 or 2");
   }
   const github = requireObject2(config.github, "github");
   assertOnlyKeys2(github, ["username"], "github");
@@ -1019,12 +1101,88 @@ function validateConfig(value) {
   if (output.fps * output.durationSeconds > MAX_FRAME_COUNT) {
     throw new ConfigError(`output must contain at most ${MAX_FRAME_COUNT} frames`);
   }
+  const experience = config.experience === void 0 ? void 0 : validateExperience(config.experience);
   return {
-    version: 1,
+    version: config.version,
     github: { username },
     character,
     output,
-    theme
+    theme,
+    ...experience ? { experience } : {}
+  };
+}
+function validateExperience(value) {
+  const experience = requireObject2(value, "experience");
+  assertOnlyKeys2(
+    experience,
+    ["habitat", "calendar", "stats", "identity", "link", "budget"],
+    "experience"
+  );
+  if (experience.habitat !== void 0 && experience.habitat !== "moonlit-garden") {
+    throw new ConfigError("experience.habitat must be moonlit-garden");
+  }
+  const calendar = requireObject2(experience.calendar ?? {}, "experience.calendar");
+  assertOnlyKeys2(calendar, ["timezone", "hemisphere"], "experience.calendar");
+  const timezone = calendar.timezone === void 0 ? "UTC" : requireString2(calendar.timezone, "experience.calendar.timezone");
+  const hemisphere = calendar.hemisphere === void 0 ? "north" : calendar.hemisphere;
+  if (!isHemisphere(hemisphere)) {
+    throw new ConfigError("experience.calendar.hemisphere must be north or south");
+  }
+  const stats = requireObject2(experience.stats ?? {}, "experience.stats");
+  assertOnlyKeys2(
+    stats,
+    ["period", "showStreak", "showTotal"],
+    "experience.stats"
+  );
+  const period = stats.period === void 0 ? "displayed-weeks" : stats.period;
+  if (!isStatsPeriod(period)) {
+    throw new ConfigError(
+      "experience.stats.period must be displayed-weeks or calendar-year"
+    );
+  }
+  const showStreak = stats.showStreak === void 0 ? true : requireBoolean(stats.showStreak, "experience.stats.showStreak");
+  const showTotal = stats.showTotal === void 0 ? true : requireBoolean(stats.showTotal, "experience.stats.showTotal");
+  const identity = requireObject2(experience.identity ?? {}, "experience.identity");
+  assertOnlyKeys2(
+    identity,
+    ["enabled", "name", "role", "style"],
+    "experience.identity"
+  );
+  const enabled = identity.enabled === void 0 ? false : requireBoolean(identity.enabled, "experience.identity.enabled");
+  const name = identity.name === void 0 ? "" : requireOptionalBoundedString(identity.name, "experience.identity.name", MAX_IDENTITY_LENGTH);
+  const role = identity.role === void 0 ? "" : requireOptionalBoundedString(identity.role, "experience.identity.role", MAX_IDENTITY_LENGTH);
+  const style = identity.style === void 0 ? "quiet-label" : identity.style;
+  if (!isIdentityStyle(style)) {
+    throw new ConfigError(
+      "experience.identity.style must be quiet-label or combined-sign"
+    );
+  }
+  const link = experience.link === void 0 ? "" : requireLink(experience.link, "experience.link");
+  const budget = requireObject2(experience.budget ?? {}, "experience.budget");
+  assertOnlyKeys2(
+    budget,
+    ["targetBytes", "hardMaxBytes"],
+    "experience.budget"
+  );
+  const targetBytes = budget.targetBytes === void 0 ? 2e6 : requireIntegerInRange2(
+    budget.targetBytes,
+    "experience.budget.targetBytes",
+    MIN_TARGET_BYTES,
+    MAX_HARD_MAX_BYTES
+  );
+  const hardMaxBytes = budget.hardMaxBytes === void 0 ? 5e6 : requireIntegerInRange2(
+    budget.hardMaxBytes,
+    "experience.budget.hardMaxBytes",
+    targetBytes,
+    MAX_HARD_MAX_BYTES
+  );
+  return {
+    habitat: "moonlit-garden",
+    calendar: { timezone, hemisphere },
+    stats: { period, showStreak, showTotal },
+    identity: { enabled, name, role, style },
+    link,
+    budget: { targetBytes, hardMaxBytes }
   };
 }
 function validateOutput(value) {
@@ -1087,6 +1245,41 @@ function requireString2(value, path) {
   }
   return value;
 }
+function requireOptionalBoundedString(value, path, maximumLength) {
+  if (typeof value !== "string") {
+    throw new ConfigError(`${path} must be a string`);
+  }
+  if (value.length > maximumLength) {
+    throw new ConfigError(`${path} must contain at most ${maximumLength} characters`);
+  }
+  return value;
+}
+function requireBoolean(value, path) {
+  if (typeof value !== "boolean") {
+    throw new ConfigError(`${path} must be a boolean`);
+  }
+  return value;
+}
+function requireLink(value, path) {
+  if (typeof value !== "string") {
+    throw new ConfigError(`${path} must be a string`);
+  }
+  if (value.length > MAX_LINK_LENGTH) {
+    throw new ConfigError(`${path} must contain at most ${MAX_LINK_LENGTH} characters`);
+  }
+  const link = value;
+  if (link.length === 0) return link;
+  let parsed;
+  try {
+    parsed = new URL(link);
+  } catch {
+    throw new ConfigError(`${path} must be an absolute http or https URL`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new ConfigError(`${path} must be an absolute http or https URL`);
+  }
+  return link;
+}
 function requireColor(value, path) {
   const color = requireString2(value, path);
   if (!HEX_COLOR_PATTERN2.test(color)) {
@@ -1113,11 +1306,12 @@ function requireNumberInRange(value, path, minimum, maximum) {
 async function loadConfig(path) {
   const configPath = resolve2(path);
   const raw = await readFile2(configPath, "utf8");
-  const parsed = parseJson2(raw, configPath);
+  const parsed = parseJson(raw, configPath);
   const config = validateConfigWithPath(parsed, configPath);
   const configDirectory = dirname(configPath);
   return {
     ...config,
+    experience: normalizeExperience(config.experience),
     configPath,
     characterPath: resolve2(configDirectory, config.character),
     outputPath: resolve2(configDirectory, config.output.path)
@@ -1133,7 +1327,7 @@ function validateConfigWithPath(value, path) {
     throw error;
   }
 }
-function parseJson2(raw, path) {
+function parseJson(raw, path) {
   try {
     return JSON.parse(raw);
   } catch (error) {
@@ -1474,6 +1668,154 @@ function palettesMatch(left, right) {
   );
 }
 
+// src/output/budget.ts
+function selectFramesWithinBudget(frames, encode, options) {
+  if (frames.length === 0) throw new Error("cannot budget an empty frame list");
+  if (!Number.isInteger(options.targetBytes) || options.targetBytes < 1) {
+    throw new RangeError("targetBytes must be a positive integer");
+  }
+  if (!Number.isInteger(options.hardMaxBytes) || options.hardMaxBytes < options.targetBytes) {
+    throw new RangeError("hardMaxBytes must be greater than or equal to targetBytes");
+  }
+  const candidates = candidateCounts(frames.length);
+  let largestWithinHardMax;
+  for (const count of candidates) {
+    const sampled = sampleFrames(frames, count);
+    const bytes = encode(sampled);
+    const result = { frames: sampled, bytes };
+    if (bytes.length <= options.targetBytes) return result;
+    if (bytes.length <= options.hardMaxBytes && largestWithinHardMax === void 0) {
+      largestWithinHardMax = result;
+    }
+  }
+  if (largestWithinHardMax !== void 0) return largestWithinHardMax;
+  throw new Error("cannot fit one GIF frame within the hard byte budget");
+}
+function candidateCounts(frameCount) {
+  const counts = /* @__PURE__ */ new Set([frameCount, 1]);
+  for (const ratio of [0.8, 0.66, 0.5, 0.4, 0.3, 0.2, 0.15, 0.1]) {
+    counts.add(Math.max(1, Math.floor(frameCount * ratio)));
+  }
+  return [...counts].sort((left, right) => right - left);
+}
+function sampleFrames(frames, count) {
+  if (count >= frames.length) return [...frames];
+  const sampled = [];
+  for (let index = 0; index < count; index += 1) {
+    const sourceIndex = Math.round(index * (frames.length - 1) / (count - 1 || 1));
+    sampled.push(frames[sourceIndex]);
+  }
+  return sampled;
+}
+
+// src/output/png.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir2, rename as rename2, rm as rm2, writeFile as writeFile2 } from "node:fs/promises";
+import { basename as basename2, dirname as dirname3, join as join2 } from "node:path";
+import { deflateSync } from "node:zlib";
+var PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+var pendingWrites2 = /* @__PURE__ */ new Map();
+function encodePng(frame) {
+  validateFrame3(frame);
+  const raw = new Uint8Array(frame.height * (1 + frame.width * 3));
+  for (let y = 0; y < frame.height; y += 1) {
+    const rowStart = y * (1 + frame.width * 3);
+    raw[rowStart] = 0;
+    for (let x = 0; x < frame.width; x += 1) {
+      const paletteIndex = frame.pixels[y * frame.width + x];
+      const color = frame.palette[paletteIndex] ?? frame.palette[0];
+      const pixelStart = rowStart + 1 + x * 3;
+      raw[pixelStart] = color[0];
+      raw[pixelStart + 1] = color[1];
+      raw[pixelStart + 2] = color[2];
+    }
+  }
+  const header = new Uint8Array(13);
+  writeUint32(header, 0, frame.width);
+  writeUint32(header, 4, frame.height);
+  header[8] = 8;
+  header[9] = 2;
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+  const compressed = new Uint8Array(deflateSync(raw));
+  return concat(
+    PNG_SIGNATURE,
+    chunk("IHDR", header),
+    chunk("IDAT", compressed),
+    chunk("IEND", new Uint8Array())
+  );
+}
+async function writePngAtomic(outputPath, bytes) {
+  const previousWrite = pendingWrites2.get(outputPath) ?? Promise.resolve();
+  const currentWrite = previousWrite.catch(() => void 0).then(() => writePngAtomicNow(outputPath, bytes));
+  pendingWrites2.set(outputPath, currentWrite);
+  try {
+    await currentWrite;
+  } finally {
+    if (pendingWrites2.get(outputPath) === currentWrite) pendingWrites2.delete(outputPath);
+  }
+}
+async function writePngAtomicNow(outputPath, bytes) {
+  const outputDirectory = dirname3(outputPath);
+  const temporaryPath = join2(
+    outputDirectory,
+    `.${basename2(outputPath)}.${process.pid}.${randomUUID2()}.tmp`
+  );
+  await mkdir2(outputDirectory, { recursive: true });
+  try {
+    await writeFile2(temporaryPath, bytes);
+    await rename2(temporaryPath, outputPath);
+  } catch (error) {
+    await rm2(temporaryPath, { force: true });
+    throw error;
+  }
+}
+function chunk(type, data) {
+  const result = new Uint8Array(12 + data.length);
+  writeUint32(result, 0, data.length);
+  for (let index = 0; index < 4; index += 1) result[4 + index] = type.charCodeAt(index);
+  result.set(data, 8);
+  writeUint32(result, 8 + data.length, crc32(result.subarray(4, 8 + data.length)));
+  return result;
+}
+function crc32(bytes) {
+  let crc = 4294967295;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = crc >>> 1 ^ (crc & 1 ? 3988292384 : 0);
+    }
+  }
+  return (crc ^ 4294967295) >>> 0;
+}
+function writeUint32(target, offset, value) {
+  target[offset] = value >>> 24 & 255;
+  target[offset + 1] = value >>> 16 & 255;
+  target[offset + 2] = value >>> 8 & 255;
+  target[offset + 3] = value & 255;
+}
+function concat(...parts) {
+  const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+  return result;
+}
+function validateFrame3(frame) {
+  if (!Number.isInteger(frame.width) || frame.width < 1 || !Number.isInteger(frame.height) || frame.height < 1) {
+    throw new Error("PNG frame dimensions must be positive integers");
+  }
+  if (frame.pixels.length !== frame.width * frame.height) {
+    throw new Error("PNG frame pixel count does not match its dimensions");
+  }
+  if (frame.palette.length < 1 || frame.palette.length > 256) {
+    throw new Error("PNG palette must contain between 1 and 256 colors");
+  }
+}
+
 // src/animation/walk-cycle.ts
 var WALK_POSE_COUNT = 4;
 function walkPoseForDistance(distance, stridePixels) {
@@ -1539,6 +1881,107 @@ function validateOptions2(frameIndex, options) {
   if (!Number.isInteger(options.gridLeft)) {
     throw new RangeError("gridLeft must be an integer");
   }
+}
+
+// src/experience/metrics.ts
+var RECENT_ACTIVITY_DAYS = 14;
+function calculateActivityMetrics(calendar) {
+  const days = flattenDays(calendar);
+  const currentStreak = countCurrentStreak(days);
+  const displayedTotal = days.reduce((total, day) => total + day.count, 0);
+  const endYear = Number(calendar.endDate.slice(0, 4));
+  const calendarYearTotal = days.filter((day) => day.date.startsWith(`${endYear}-`)).reduce((total, day) => total + day.count, 0);
+  const recentDays = days.slice(-RECENT_ACTIVITY_DAYS);
+  const recentActivityRatio = recentDays.length === 0 ? 0 : recentDays.filter((day) => day.count > 0).length / recentDays.length;
+  return {
+    currentStreak,
+    displayedTotal,
+    calendarYearTotal,
+    recentActivityRatio
+  };
+}
+function flattenDays(calendar) {
+  return calendar.weeks.flatMap((week) => [...week]);
+}
+function countCurrentStreak(days) {
+  let streak = 0;
+  for (let index = days.length - 1; index >= 0; index -= 1) {
+    if ((days[index]?.count ?? 0) === 0) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+// src/experience/season.ts
+function seasonForDate(date, hemisphere) {
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+  const northern = northernSeason(month, day);
+  if (hemisphere === "north") return northern;
+  return invertSeason(northern);
+}
+function northernSeason(month, day) {
+  const monthDay = month * 100 + day;
+  if (monthDay >= 321 && monthDay < 621) return "spring";
+  if (monthDay >= 621 && monthDay < 923) return "summer";
+  if (monthDay >= 923 && monthDay < 1221) return "autumn";
+  return "winter";
+}
+function invertSeason(season) {
+  if (season === "spring") return "autumn";
+  if (season === "summer") return "winter";
+  if (season === "autumn") return "spring";
+  return "summer";
+}
+
+// src/experience/planner.ts
+var ENGINE_VERSION = "moonlit-garden-1";
+function planScene(calendar, config) {
+  const experience = config.experience ?? createDefaultExperience();
+  const metrics = calculateActivityMetrics(calendar);
+  const seed = hashSeed([
+    config.github.username,
+    calendar.endDate,
+    experience.habitat,
+    experience.calendar.timezone,
+    experience.calendar.hemisphere,
+    ENGINE_VERSION
+  ].join("|"));
+  const restMode = metrics.recentActivityRatio < 0.15;
+  const weather = chooseWeather(seed, metrics.recentActivityRatio, restMode);
+  const vignette = chooseVignette(seed, metrics, restMode, weather);
+  return Object.freeze({
+    season: seasonForDate(calendar.endDate, experience.calendar.hemisphere),
+    weather,
+    vignette,
+    metrics,
+    identity: experience.identity,
+    seed
+  });
+}
+function chooseWeather(seed, activityRatio, restMode) {
+  if (restMode) return seed % 2 === 0 ? "clouds" : "mist";
+  if (activityRatio > 0.65) return seed % 4 === 0 ? "clear" : "clouds";
+  return seed % 3 === 0 ? "rain" : "clouds";
+}
+function chooseVignette(seed, metrics, restMode, weather) {
+  if (metrics.currentStreak > 0 && metrics.currentStreak % 7 === 0) {
+    return "celebrate";
+  }
+  if (restMode) return seed % 2 === 0 ? "nap" : "read";
+  if (weather === "rain") return seed % 2 === 0 ? "rain-watch" : "water";
+  if (metrics.recentActivityRatio > 0.65) {
+    return ["fireflies", "puddle-hop", "water"][seed % 3];
+  }
+  return seed % 2 === 0 ? "read" : "fireflies";
+}
+function hashSeed(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 // src/render/framebuffer.ts
@@ -1654,6 +2097,80 @@ function parseHex(value) {
   return [red, green, blue];
 }
 
+// src/render/font.ts
+var GLYPH_WIDTH = 3;
+var GLYPH_GAP = 1;
+var GLYPHS = {
+  "0": ["111", "101", "101", "101", "111"],
+  "1": ["010", "110", "010", "010", "111"],
+  "2": ["110", "001", "010", "100", "111"],
+  "3": ["110", "001", "010", "001", "110"],
+  "4": ["101", "101", "111", "001", "001"],
+  "5": ["111", "100", "110", "001", "110"],
+  "6": ["011", "100", "111", "101", "111"],
+  "7": ["111", "001", "010", "010", "010"],
+  "8": ["111", "101", "111", "101", "111"],
+  "9": ["111", "101", "111", "001", "110"],
+  A: ["010", "101", "111", "101", "101"],
+  B: ["110", "101", "110", "101", "110"],
+  C: ["011", "100", "100", "100", "011"],
+  D: ["110", "101", "101", "101", "110"],
+  E: ["111", "100", "110", "100", "111"],
+  F: ["111", "100", "110", "100", "100"],
+  G: ["011", "100", "101", "101", "011"],
+  H: ["101", "101", "111", "101", "101"],
+  I: ["111", "010", "010", "010", "111"],
+  J: ["001", "001", "001", "101", "010"],
+  K: ["101", "101", "110", "101", "101"],
+  L: ["100", "100", "100", "100", "111"],
+  M: ["10001", "11011", "10101", "10101", "10101"],
+  N: ["1001", "1101", "1011", "1001", "1001"],
+  O: ["010", "101", "101", "101", "010"],
+  P: ["110", "101", "110", "100", "100"],
+  Q: ["010", "101", "101", "011", "001"],
+  R: ["110", "101", "110", "101", "101"],
+  S: ["011", "100", "010", "001", "110"],
+  T: ["111", "010", "010", "010", "010"],
+  U: ["101", "101", "101", "101", "111"],
+  V: ["101", "101", "101", "101", "010"],
+  W: ["10101", "10101", "10101", "11011", "10001"],
+  X: ["101", "101", "010", "101", "101"],
+  Y: ["101", "101", "010", "010", "010"],
+  Z: ["111", "001", "010", "100", "111"],
+  ":": ["000", "010", "000", "010", "000"],
+  ".": ["000", "000", "000", "000", "010"],
+  "-": ["000", "000", "111", "000", "000"],
+  "/": ["001", "001", "010", "100", "100"],
+  "'": ["010", "010", "000", "000", "000"],
+  "?": ["110", "001", "010", "000", "010"]
+};
+function drawText(buffer, palette, text, x, y, paletteIndex, scale) {
+  if (!Number.isInteger(scale) || scale < 1) {
+    throw new RangeError("text scale must be a positive integer");
+  }
+  void palette;
+  let cursorX = x;
+  for (const character of text.toUpperCase()) {
+    const glyph = GLYPHS[character] ?? GLYPHS["?"];
+    const glyphWidth = glyph[0]?.length ?? GLYPH_WIDTH;
+    for (let row = 0; row < glyph.length; row += 1) {
+      const pattern = glyph[row];
+      for (let column = 0; column < pattern.length; column += 1) {
+        if (pattern[column] !== "1") continue;
+        buffer.fillRect(
+          cursorX + column * scale,
+          y + row * scale,
+          scale,
+          scale,
+          paletteIndex
+        );
+      }
+    }
+    cursorX += (glyphWidth + GLYPH_GAP) * scale;
+  }
+  return Math.max(0, cursorX - x - GLYPH_GAP * scale);
+}
+
 // src/render/primitives.ts
 function drawSprite(buffer, palette, frame, character, anchorX, baselineY) {
   const cellSize = character.cellSize;
@@ -1687,6 +2204,8 @@ var GRID_MINIMUM_GAP = 1;
 var GRID_BOTTOM_MARGIN = 18;
 var CHARACTER_GRAPH_GAP = 8;
 var CHARACTER_STRIDE_CELLS = 3;
+var SIGN_HEIGHT = 54;
+var SIGN_MARGIN = 14;
 function createScene(config, character) {
   const layout = createLayout(config.output.width, config.output.height);
   const palette = createPalette(config, character);
@@ -1700,6 +2219,7 @@ function createScene(config, character) {
     layout,
     render(calendar, frameIndex) {
       validateCalendar(calendar);
+      const plan = planScene(calendar, config);
       const sample = sampleTimeline(frameIndex, {
         frameCount,
         canvasWidth: config.output.width,
@@ -1714,9 +2234,10 @@ function createScene(config, character) {
         config.output.height,
         0
       );
-      drawBackground(buffer, palette, config);
+      drawBackground(buffer, palette, config, plan, frameIndex, frameCount);
       drawBaseline(buffer, palette, config, layout);
       drawCalendar(buffer, palette, config, layout, calendar, sample.wakeColumn);
+      drawGardenProps(buffer, palette, config, layout, plan, frameIndex, frameCount);
       drawCharacter(
         buffer,
         palette,
@@ -1725,6 +2246,7 @@ function createScene(config, character) {
         sample.x,
         layout.baselineY + sample.bob
       );
+      drawVignette(buffer, palette, config, layout, plan, sample.x, frameIndex, frameCount);
       return {
         width: buffer.width,
         height: buffer.height,
@@ -1750,7 +2272,8 @@ function createLayout(width, height) {
     cellGap,
     columns: GRID_COLUMNS,
     rows: GRID_ROWS,
-    baselineY: gridTop - CHARACTER_GRAPH_GAP
+    baselineY: gridTop - CHARACTER_GRAPH_GAP,
+    gridWidth
   });
 }
 function fitGridToWidth(width) {
@@ -1774,20 +2297,219 @@ function createPalette(config, character) {
   palette.index(config.theme.gridEmpty);
   for (const color of config.theme.gridLevels) palette.index(color);
   palette.index(mixHex(config.theme.gridEmpty, config.theme.accent, 0.35));
+  for (const color of [
+    "#f5dca1",
+    "#eee9ff",
+    "#87dba8",
+    "#8ee9ad",
+    "#65b96f",
+    "#96e6a5",
+    "#684c2e",
+    "#8b6840",
+    "#5a4027",
+    "#d9c79d",
+    "#fff3ce",
+    "#8da8b5",
+    "#496c76",
+    "#a7d9df",
+    "#273e53",
+    "#6f52ca",
+    "#c7a0ef"
+  ]) palette.index(color);
   for (const color of Object.values(character.palette)) palette.index(color);
   return palette;
 }
-function drawBackground(buffer, palette, config) {
-  const topColor = palette.index(
-    mixHex(config.theme.background, config.theme.accent, 0.08)
-  );
+function drawBackground(buffer, palette, config, plan, frameIndex, frameCount) {
+  const topColor = palette.index(seasonSkyColor(config.theme.background, plan.season));
   const middleColor = palette.index(
     mixHex(config.theme.background, config.theme.accent, 0.04)
   );
-  const topHeight = Math.floor(buffer.height * 0.3);
-  const middleHeight = Math.floor(buffer.height * 0.25);
+  const topHeight = Math.floor(buffer.height * 0.32);
+  const middleHeight = Math.floor(buffer.height * 0.24);
   buffer.fillRect(0, 0, buffer.width, topHeight, topColor);
   buffer.fillRect(0, topHeight, buffer.width, middleHeight, middleColor);
+  const moonX = Math.max(26, buffer.width - 90);
+  const moonY = 34 + Math.round(Math.sin(frameIndex / frameCount * Math.PI * 2) * 2);
+  const moon = palette.index("#f5dca1");
+  const shadow = topColor;
+  buffer.fillRect(moonX, moonY, 22, 22, moon);
+  buffer.fillRect(moonX + 7, moonY - 3, 22, 22, shadow);
+  drawStars(buffer, palette, plan.seed);
+  drawWeather(buffer, palette, plan.weather, frameIndex, frameCount);
+}
+function drawStars(buffer, palette, seed) {
+  const color = palette.index("#8ee9ad");
+  const softColor = palette.index("#c7a0ef");
+  const stars = [
+    [0.08, 0.18],
+    [0.17, 0.29],
+    [0.27, 0.14],
+    [0.39, 0.24],
+    [0.52, 0.12],
+    [0.63, 0.27],
+    [0.74, 0.16],
+    [0.86, 0.25],
+    [0.93, 0.12]
+  ];
+  for (const [index, [relativeX, relativeY]] of stars.entries()) {
+    const x = Math.floor(buffer.width * relativeX);
+    const y = Math.floor(buffer.height * relativeY);
+    const paletteIndex = (seed + index) % 3 === 0 ? softColor : color;
+    buffer.fillRect(x, y, 2, 2, paletteIndex);
+  }
+}
+function drawWeather(buffer, palette, weather, frameIndex, frameCount) {
+  if (weather === "clear") return;
+  const phase = Math.floor(frameIndex / frameCount * 8);
+  if (weather === "clouds") {
+    const cloud = palette.index("#273e53");
+    for (const x of [0.14, 0.55, 0.78]) {
+      const left = Math.floor(buffer.width * x) + phase % 2 * 2;
+      const top = Math.floor(buffer.height * (0.24 + x * 0.03));
+      buffer.fillRect(left, top, 32, 5, cloud);
+      buffer.fillRect(left + 8, top - 4, 20, 5, cloud);
+      buffer.fillRect(left + 15, top - 7, 10, 4, cloud);
+    }
+    return;
+  }
+  const mist = palette.index(weather === "mist" ? "#a7d9df" : "#8da8b5");
+  const lineCount = weather === "mist" ? 6 : 12;
+  for (let index = 0; index < lineCount; index += 1) {
+    const x = (index * 83 + phase * 7) % Math.max(1, buffer.width - 4);
+    const y = 54 + (index * 29 + phase * 3) % Math.max(1, Math.floor(buffer.height * 0.35));
+    buffer.fillRect(x, y, weather === "mist" ? 9 : 2, weather === "mist" ? 1 : 8, mist);
+  }
+}
+function drawGardenProps(buffer, palette, config, layout, plan, frameIndex, frameCount) {
+  const groundY = layout.baselineY - 1;
+  const plantColor = palette.index(plan.season === "autumn" ? "#d09b67" : "#65b96f");
+  const leafColor = palette.index(plan.season === "winter" ? "#8da8b5" : "#96e6a5");
+  for (const offset of [26, 118, 242, 348]) {
+    const x = layout.gridLeft + offset;
+    buffer.fillRect(x, groundY - 13, 2, 13, plantColor);
+    buffer.fillRect(x - 5, groundY - 15, 7, 4, leafColor);
+    buffer.fillRect(x + 2, groundY - 20, 7, 4, leafColor);
+  }
+  drawGardenSign(buffer, palette, config, layout, plan);
+  if (plan.identity.enabled && (plan.identity.name || plan.identity.role)) {
+    drawIdentity(buffer, palette, config, plan, layout);
+  }
+  drawLantern(buffer, palette, layout, frameIndex, frameCount);
+}
+function drawGardenSign(buffer, palette, config, layout, plan) {
+  const signWidth = Math.min(204, Math.max(132, Math.floor(buffer.width * 0.22)));
+  const signHeight = SIGN_HEIGHT;
+  const signLeft = buffer.width - signWidth - SIGN_MARGIN;
+  const signTop = Math.max(8, layout.baselineY - signHeight - 18);
+  const wood = palette.index("#684c2e");
+  const woodLight = palette.index("#8b6840");
+  const post = palette.index("#5a4027");
+  const label = palette.index("#d9c79d");
+  const value = palette.index("#fff3ce");
+  buffer.fillRect(signLeft, signTop, signWidth, signHeight, wood);
+  buffer.fillRect(signLeft + 5, signTop + 5, signWidth - 10, signHeight - 10, woodLight);
+  buffer.fillRect(signLeft + 14, signTop + signHeight, 10, 20, post);
+  buffer.fillRect(signLeft + signWidth - 24, signTop + signHeight, 10, 20, post);
+  const statsPeriod = config.experience.stats.period;
+  const total = statsPeriod === "calendar-year" ? plan.metrics.calendarYearTotal : plan.metrics.displayedTotal;
+  const width = signWidth - 28;
+  const showStreak = config.experience.stats.showStreak;
+  const showTotal = config.experience.stats.showTotal;
+  const columnWidth = Math.floor(width / ((showStreak ? 1 : 0) + (showTotal ? 1 : 0) || 1));
+  let cursor = signLeft + 14;
+  if (showStreak) {
+    drawText(buffer, palette, "STREAK", cursor, signTop + 12, label, 1);
+    drawText(buffer, palette, `${plan.metrics.currentStreak} DAYS`, cursor, signTop + 27, value, 1);
+    cursor += columnWidth;
+  }
+  if (showTotal) {
+    drawText(buffer, palette, statsPeriod === "calendar-year" ? "YEAR" : "53 WEEKS", cursor, signTop + 12, label, 1);
+    drawText(buffer, palette, `${total}`, cursor, signTop + 27, value, 1);
+  }
+}
+function drawIdentity(buffer, palette, config, plan, layout) {
+  const name = plan.identity.name.trim().toUpperCase();
+  const role = plan.identity.role.trim().toUpperCase();
+  const textColor = palette.index("#eee9ff");
+  const roleColor = palette.index("#87dba8");
+  if (plan.identity.style === "combined-sign") {
+    const signLeft = Math.max(10, buffer.width - Math.min(246, Math.floor(buffer.width * 0.27)) - SIGN_MARGIN);
+    const signTop = Math.max(8, layout.baselineY - SIGN_HEIGHT - 84);
+    buffer.fillRect(signLeft, signTop, Math.min(246, Math.floor(buffer.width * 0.27)), 39, palette.index("#684c2e"));
+    drawText(buffer, palette, name.slice(0, 14), signLeft + 10, signTop + 7, textColor, 1);
+    drawText(buffer, palette, role.slice(0, 22), signLeft + 10, signTop + 22, roleColor, 1);
+    return;
+  }
+  const left = Math.max(10, Math.floor(buffer.width * 0.07));
+  const top = Math.max(8, Math.floor(buffer.height * 0.12));
+  drawText(buffer, palette, name.slice(0, 16), left, top, textColor, 1);
+  drawText(buffer, palette, role.slice(0, 24), left, top + 9, roleColor, 1);
+}
+function drawLantern(buffer, palette, layout, frameIndex, frameCount) {
+  const x = layout.gridLeft + layout.gridWidth - 28;
+  const y = layout.baselineY - 34;
+  const glow = palette.index("#f5dca1");
+  const phase = Math.floor(frameIndex / frameCount * 4) % 2;
+  buffer.fillRect(x + 4, y - 7, 6, 3, glow);
+  buffer.fillRect(x + 2, y - 4, 10, 13, palette.index(phase === 0 ? "#8b6840" : "#684c2e"));
+  buffer.fillRect(x + 5, y - 1, 4, 7, glow);
+  buffer.fillRect(x + 4, y + 9, 6, 2, palette.index("#5a4027"));
+}
+function drawVignette(buffer, palette, config, layout, plan, characterX, frameIndex, frameCount) {
+  const x = Math.max(6, Math.min(buffer.width - 24, characterX + 36));
+  const y = layout.baselineY - 5;
+  const green = palette.index("#96e6a5");
+  const purple = palette.index("#c7a0ef");
+  const warm = palette.index("#f5dca1");
+  const phase = Math.floor(frameIndex / frameCount * 6) % 2;
+  if (plan.vignette === "water") {
+    buffer.fillRect(x, y - 12, 5, 12, palette.index("#8da8b5"));
+    buffer.fillRect(x - 2, y - 15, 9, 4, palette.index("#496c76"));
+    buffer.fillRect(x + 8, y - 2, 13, 2, palette.index("#a7d9df"));
+    return;
+  }
+  if (plan.vignette === "read") {
+    buffer.fillRect(x, y - 12, 12, 8, warm);
+    buffer.fillRect(x + 5, y - 13, 2, 10, palette.index("#8b6840"));
+    return;
+  }
+  if (plan.vignette === "nap") {
+    drawText(buffer, palette, phase === 0 ? "Z" : "Z Z", x, y - 23, purple, 1);
+    return;
+  }
+  if (plan.vignette === "rain-watch") {
+    buffer.fillRect(x, y - 26, 18, 3, palette.index("#273e53"));
+    buffer.fillRect(x + 5, y - 29, 9, 3, palette.index("#273e53"));
+    buffer.fillRect(x + 2, y - 20, 2, 7, palette.index("#a7d9df"));
+    buffer.fillRect(x + 12, y - 17, 2, 7, palette.index("#a7d9df"));
+    return;
+  }
+  if (plan.vignette === "puddle-hop") {
+    buffer.fillRect(x, y, 22, 2, palette.index("#a7d9df"));
+    buffer.fillRect(x + 5, y + 3, 12, 1, palette.index("#8da8b5"));
+    return;
+  }
+  if (plan.vignette === "celebrate") {
+    const sparkles = [[0, -20], [12, -27], [24, -17], [9, -8]];
+    for (const [offsetX, offsetY] of sparkles) {
+      buffer.fillRect(x + offsetX, y + offsetY, 3, 3, phase === 0 ? warm : purple);
+    }
+    return;
+  }
+  const fireflies = [[0, -18], [14, -26], [28, -14]];
+  for (const [offsetX, offsetY] of fireflies) {
+    buffer.fillRect(x + offsetX, y + offsetY, 3, 3, phase === 0 ? green : warm);
+  }
+  void config;
+}
+function seasonSkyColor(background, season) {
+  const seasonTint = {
+    spring: "#275b52",
+    summer: "#2d4569",
+    autumn: "#68433e",
+    winter: "#283b59"
+  };
+  return mixHex(background, seasonTint[season], 0.28);
 }
 function drawBaseline(buffer, palette, config, layout) {
   const width = layout.columns * layout.cellSize + (layout.columns - 1) * layout.cellGap;
@@ -1879,16 +2601,33 @@ async function generate(options) {
   for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
     frames.push(scene.render(calendar, frameIndex));
   }
-  const delayMs = Math.round(1e3 / config.output.fps);
-  const bytes = encodeGif(frames, delayMs);
   const outputPath = options.outputPath ? resolve3(options.outputPath) : config.outputPath;
-  await writeGifAtomic(outputPath, bytes);
+  const budgeted = selectFramesWithinBudget(
+    frames,
+    (candidate) => encodeGif(candidate, animationDelay(config.output.durationSeconds, candidate.length)),
+    config.experience.budget
+  );
+  const delayMs = animationDelay(config.output.durationSeconds, budgeted.frames.length);
+  const bytes = budgeted.bytes.length > 0 ? budgeted.bytes : encodeGif(budgeted.frames, delayMs);
+  const staticPath = createStaticPath(outputPath);
+  const staticFrame = budgeted.frames[Math.floor(budgeted.frames.length / 2)];
+  await Promise.all([
+    writeGifAtomic(outputPath, bytes),
+    writePngAtomic(staticPath, encodePng(staticFrame))
+  ]);
   return {
     path: outputPath,
-    frames: frameCount,
+    staticPath,
+    frames: budgeted.frames.length,
     width: config.output.width,
     height: config.output.height
   };
+}
+function animationDelay(durationSeconds, frameCount) {
+  return Math.max(10, Math.round(durationSeconds * 1e3 / frameCount));
+}
+function createStaticPath(outputPath) {
+  return outputPath.replace(/\.[^.\\/]+$/, ".png");
 }
 async function loadFixture(fixturePath) {
   const path = resolve3(fixturePath);
@@ -1954,10 +2693,11 @@ async function runAction(runtime = DEFAULT_RUNTIME) {
       ...token ? { token } : {},
       ...outputPath ? { outputPath } : {}
     });
-    await runtime.appendOutput(
-      githubOutput,
-      formatEnvironmentOutput("path", result.path)
-    );
+    await runtime.appendOutput(githubOutput, [
+      formatEnvironmentOutput("path", result.path),
+      formatEnvironmentOutput("staticPath", result.staticPath),
+      formatEnvironmentOutput("frames", String(result.frames))
+    ].join(""));
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1976,7 +2716,7 @@ function escapeWorkflowCommand(value) {
 }
 function formatEnvironmentOutput(name, value) {
   const valueLines = value.split(/\r\n|\r|\n/);
-  let delimiter = "UBE_OUTPUT_PATH";
+  let delimiter = name === "path" ? "UBE_OUTPUT_PATH" : `UBE_OUTPUT_${name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase()}`;
   while (valueLines.includes(delimiter)) {
     delimiter += "_";
   }

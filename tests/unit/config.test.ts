@@ -85,7 +85,7 @@ describe("loadConfig", () => {
 
     expect(loaded.experience).toMatchObject({
       habitat: "moonlit-garden",
-      stats: { period: "displayed-weeks", showStreak: true, showTotal: true },
+      stats: { period: "calendar-year", showStreak: true, showTotal: true },
       identity: {
         enabled: false,
         name: "",

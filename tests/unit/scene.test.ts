@@ -10,9 +10,9 @@ import type { ContributionCalendar, RawContributionDay } from "../../src/contrib
 import { createScene, type Scene } from "../../src/render/scene.js";
 
 const EXPECTED_FRAME_HASHES = [
-  "b286bd1a82628120dcf30200bb5b3ffedd57c4c410651f9697fea7f0e72099fe",
-  "95d4380f0fe6815962409bed32e572b5dba269d6db0b0d7278ced6bb837e8830",
-  "973372cdcaa7d4e753e687789769b2e7b1a65ca9d12a5e6df292672de862135e",
+  "c90a4d9ef91704342918d120c874ed1174f4592981615fdba123d22046ab7e0e",
+  "c47d896b296793f25f56235518ea5ba74889e1057dea6f6cfc8b2c4447ed0823",
+  "4d1da46658d4347edd70a91b8a4611b0541dcaa292952ffd9353c4c599770663",
 ];
 
 let scene: Scene;

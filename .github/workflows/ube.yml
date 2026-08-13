@@ -35,12 +35,12 @@ jobs:
       - name: Commit refreshed banner
         shell: bash
         run: |
-          if git diff --quiet -- assets/ube.gif; then
+          if git diff --quiet -- assets/ube.gif assets/ube.png; then
             echo "Ube is already up to date."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- assets/ube.gif
+          git add -- assets/ube.gif assets/ube.png
           git commit -m "chore: refresh Ube contribution banner"
           git push

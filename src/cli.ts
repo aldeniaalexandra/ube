@@ -43,7 +43,7 @@ export async function runCli(
         : {}),
     });
     runtime.writeOut(
-      `Generated ${result.frames} frames at ${result.path} (${result.width}x${result.height})`,
+      `Generated ${result.frames} frames at ${result.path} and ${result.staticPath} (${result.width}x${result.height})`,
     );
     return 0;
   } catch (error) {

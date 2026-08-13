@@ -43,7 +43,7 @@ describe("runAction", () => {
 
     expect(exitCode).toBe(0);
     expect(await readFile(githubOutput, "utf8")).toBe(
-      `path<<UBE_OUTPUT_PATH\n${generatedPath}\nUBE_OUTPUT_PATH\n`,
+      `path<<UBE_OUTPUT_PATH\n${generatedPath}\nUBE_OUTPUT_PATH\nstaticPath<<UBE_OUTPUT_STATICPATH\n${generatedPath.replace(/\.gif$/, ".png")}\nUBE_OUTPUT_STATICPATH\nframes<<UBE_OUTPUT_FRAMES\n120\nUBE_OUTPUT_FRAMES\n`,
     );
   });
 

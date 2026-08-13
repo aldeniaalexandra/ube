@@ -36,10 +36,11 @@ export async function runAction(
       ...(token ? { token } : {}),
       ...(outputPath ? { outputPath } : {}),
     });
-    await runtime.appendOutput(
-      githubOutput,
+    await runtime.appendOutput(githubOutput, [
       formatEnvironmentOutput("path", result.path),
-    );
+      formatEnvironmentOutput("staticPath", result.staticPath),
+      formatEnvironmentOutput("frames", String(result.frames)),
+    ].join(""));
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -62,7 +63,9 @@ function escapeWorkflowCommand(value: string): string {
 
 function formatEnvironmentOutput(name: string, value: string): string {
   const valueLines = value.split(/\r\n|\r|\n/);
-  let delimiter = "UBE_OUTPUT_PATH";
+  let delimiter = name === "path"
+    ? "UBE_OUTPUT_PATH"
+    : `UBE_OUTPUT_${name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase()}`;
   while (valueLines.includes(delimiter)) {
     delimiter += "_";
   }

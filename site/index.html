@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Build a living Moonlit Garden contribution banner for your GitHub profile README.">
+    <title>Ube Moonlit Garden</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">UBE · PROFILE GARDEN BUILDER</p>
+          <h1>Give your contribution graph a little life.</h1>
+          <p class="hero-copy">Design a deterministic Moonlit Garden banner, then export the files and README snippet that make it yours.</p>
+        </div>
+        <div class="hero-moon" aria-hidden="true"><span></span></div>
+      </header>
+
+      <section class="preview-panel" aria-labelledby="preview-heading">
+        <div class="section-heading">
+          <div><p class="eyebrow">LIVE PREVIEW</p><h2 id="preview-heading">Moonlit Garden</h2></div>
+          <span id="preview-status" class="status-pill">Illustrative fixture</span>
+        </div>
+        <canvas id="preview" width="960" height="320" aria-label="Animated Moonlit Garden contribution banner preview"></canvas>
+        <p class="hint">The preview uses representative contribution data. Your Action will render your real graph in your repository.</p>
+      </section>
+
+      <div class="workspace">
+        <section class="controls-panel" aria-labelledby="controls-heading">
+          <div class="mode-tabs" role="tablist" aria-label="Customizer mode">
+            <button class="mode-tab is-active" type="button" data-mode="guided" role="tab" aria-selected="true">Guided</button>
+            <button class="mode-tab" type="button" data-mode="advanced" role="tab" aria-selected="false">Advanced</button>
+          </div>
+
+          <div class="control-section">
+            <div class="section-heading compact"><div><p class="eyebrow">IDENTITY</p><h2 id="controls-heading">Make it yours</h2></div></div>
+            <label class="field"><span>GitHub username</span><input id="username" type="text" value="your-username" maxlength="39" autocomplete="off"></label>
+            <div class="field-row">
+              <label class="field"><span>Hemisphere</span><select id="hemisphere"><option value="north">Northern</option><option value="south">Southern</option></select></label>
+              <label class="field"><span>Timezone</span><input id="timezone" type="text" value="UTC" placeholder="Asia/Jakarta"></label>
+            </div>
+            <label class="toggle-field"><input id="identity-enabled" type="checkbox"><span><strong>Show name &amp; role</strong><small>Add an optional identity layer to the sky.</small></span></label>
+            <div id="identity-fields" class="nested-fields is-hidden">
+              <label class="field"><span>Name</span><input id="identity-name" type="text" maxlength="80" placeholder="Sandra"></label>
+              <label class="field"><span>Role</span><input id="identity-role" type="text" maxlength="80" placeholder="Creative Developer"></label>
+              <label class="field"><span>Identity style</span><select id="identity-style"><option value="quiet-label">Quiet Pixel Label</option><option value="combined-sign">Combined Garden Sign</option></select></label>
+            </div>
+          </div>
+
+          <div class="control-section">
+            <p class="eyebrow">GARDEN SIGN</p>
+            <div class="field-row">
+              <label class="field"><span>Total period</span><select id="stats-period"><option value="displayed-weeks">53 displayed weeks</option><option value="calendar-year" selected>Calendar year to date</option></select></label>
+              <label class="field"><span>Ube color</span><input id="ube-color" type="color" value="#8a63e8"></label>
+            </div>
+            <div class="check-row"><label><input id="show-streak" type="checkbox" checked> Streak</label><label><input id="show-total" type="checkbox" checked> Total</label></div>
+          </div>
+
+          <div id="advanced-fields" class="control-section advanced-section is-hidden">
+            <p class="eyebrow">ADVANCED SCENE</p>
+            <div class="field-row"><label class="field"><span>Width</span><input id="width" type="number" min="320" max="1600" step="1" value="960"></label><label class="field"><span>Height</span><input id="height" type="number" min="160" max="800" step="1" value="320"></label></div>
+            <div class="field-row"><label class="field"><span>FPS</span><input id="fps" type="number" min="1" max="25" step="0.5" value="12.5"></label><label class="field"><span>Duration (s)</span><input id="duration" type="number" min="2" max="30" step="0.5" value="12"></label></div>
+            <div class="field-row"><label class="field"><span>Target bytes</span><input id="target-bytes" type="number" min="100000" max="5000000" step="100000" value="2000000"></label><label class="field"><span>Hard max bytes</span><input id="hard-max-bytes" type="number" min="100000" max="5000000" step="100000" value="5000000"></label></div>
+            <label class="field"><span>Optional README link</span><input id="link" type="url" placeholder="https://your-site.example"></label>
+            <label class="field"><span>Character pack JSON</span><textarea id="character-json" rows="4" placeholder="Paste a validated character pack to replace Ube."></textarea></label>
+          </div>
+
+          <div class="actions"><button id="download-png" class="button secondary" type="button">Download PNG</button><button id="copy-readme" class="button primary" type="button">Copy README snippet</button></div>
+          <p id="form-error" class="form-error" role="alert"></p>
+        </section>
+
+        <aside class="export-panel" aria-labelledby="export-heading">
+          <p class="eyebrow">EXPORT BUNDLE</p><h2 id="export-heading">Ready to grow</h2>
+          <p class="export-copy">Copy these files into your profile repository. The workflow refreshes your banner on schedule.</p>
+          <div class="export-block"><div class="export-label"><span>ube.config.json</span><button type="button" data-copy="config-output">Copy</button></div><pre id="config-output"></pre></div>
+          <div class="export-block"><div class="export-label"><span>README.md</span><button type="button" data-copy="readme-output">Copy</button></div><pre id="readme-output"></pre></div>
+          <div class="export-block"><div class="export-label"><span>workflow.yml</span><button type="button" data-copy="workflow-output">Copy</button></div><pre id="workflow-output"></pre></div>
+          <p id="copy-status" class="copy-status" aria-live="polite"></p>
+        </aside>
+      </div>
+      <footer><span>Ube is deterministic, private, and powered by your own GitHub Action.</span><a href="https://github.com/aldeniaalexandra/ube">View project</a></footer>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

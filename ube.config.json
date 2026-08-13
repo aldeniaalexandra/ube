@@ -9,12 +9,35 @@
     "width": 960,
     "height": 320,
     "fps": 12.5,
-    "durationSeconds": 9.6
+    "durationSeconds": 12
   },
   "theme": {
     "background": "#0d1117",
     "gridEmpty": "#21262d",
     "gridLevels": ["#0e4429", "#006d32", "#26a641", "#39d353"],
     "accent": "#8a63e8"
+  },
+  "experience": {
+    "habitat": "moonlit-garden",
+    "calendar": {
+      "timezone": "Asia/Jakarta",
+      "hemisphere": "north"
+    },
+    "stats": {
+      "period": "calendar-year",
+      "showStreak": true,
+      "showTotal": true
+    },
+    "identity": {
+      "enabled": false,
+      "name": "",
+      "role": "",
+      "style": "quiet-label"
+    },
+    "link": "",
+    "budget": {
+      "targetBytes": 2000000,
+      "hardMaxBytes": 5000000
+    }
   }
 }

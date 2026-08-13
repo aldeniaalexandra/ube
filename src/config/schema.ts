@@ -140,10 +140,10 @@ function validateExperience(value: unknown): ExperienceConfig {
     : requireBoolean(identity.enabled, "experience.identity.enabled");
   const name = identity.name === undefined
     ? ""
-    : requireBoundedString(identity.name, "experience.identity.name", MAX_IDENTITY_LENGTH);
+    : requireOptionalBoundedString(identity.name, "experience.identity.name", MAX_IDENTITY_LENGTH);
   const role = identity.role === undefined
     ? ""
-    : requireBoundedString(identity.role, "experience.identity.role", MAX_IDENTITY_LENGTH);
+    : requireOptionalBoundedString(identity.role, "experience.identity.role", MAX_IDENTITY_LENGTH);
   const style = identity.style === undefined ? "quiet-label" : identity.style;
   if (!isIdentityStyle(style)) {
     throw new ConfigError(
@@ -264,6 +264,20 @@ function requireBoundedString(value: unknown, path: string, maximumLength: numbe
   return result;
 }
 
+function requireOptionalBoundedString(
+  value: unknown,
+  path: string,
+  maximumLength: number,
+): string {
+  if (typeof value !== "string") {
+    throw new ConfigError(`${path} must be a string`);
+  }
+  if (value.length > maximumLength) {
+    throw new ConfigError(`${path} must contain at most ${maximumLength} characters`);
+  }
+  return value;
+}
+
 function requireBoolean(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") {
     throw new ConfigError(`${path} must be a boolean`);
@@ -272,7 +286,13 @@ function requireBoolean(value: unknown, path: string): boolean {
 }
 
 function requireLink(value: unknown, path: string): string {
-  const link = requireBoundedString(value, path, MAX_LINK_LENGTH);
+  if (typeof value !== "string") {
+    throw new ConfigError(`${path} must be a string`);
+  }
+  if (value.length > MAX_LINK_LENGTH) {
+    throw new ConfigError(`${path} must contain at most ${MAX_LINK_LENGTH} characters`);
+  }
+  const link = value;
   if (link.length === 0) return link;
   let parsed: URL;
   try {

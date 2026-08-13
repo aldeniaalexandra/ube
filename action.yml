@@ -17,6 +17,10 @@ inputs:
 outputs:
   path:
     description: Absolute path of the generated GIF.
+  staticPath:
+    description: Absolute path of the generated static PNG fallback.
+  frames:
+    description: Number of GIF frames selected after the output budget is applied.
 
 runs:
   using: node24

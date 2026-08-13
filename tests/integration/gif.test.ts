@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 describe("generate", () => {
-  it("generates a looping 960 by 320 GIF with 120 frames", async () => {
+  it("generates a looping 960 by 320 GIF with 150 frames", async () => {
     const directory = await mkdtemp(join(tmpdir(), "ube-gif-"));
     temporaryDirectories.push(directory);
     const outputPath = join(directory, "ube.gif");
@@ -33,7 +33,7 @@ describe("generate", () => {
 
     expect(bytes.subarray(0, 6).toString("ascii")).toBe("GIF89a");
     expect(readLogicalScreen(bytes)).toEqual({ width: 960, height: 320 });
-    expect(countSequence(bytes, [0x21, 0xf9, 0x04])).toBe(120);
+    expect(countSequence(bytes, [0x21, 0xf9, 0x04])).toBe(150);
     expect(bytes.includes(Buffer.from("NETSCAPE2.0", "ascii"))).toBe(true);
     expect(bytes.at(-1)).toBe(0x3b);
     expect(staticBytes.subarray(0, 8)).toEqual(
@@ -42,7 +42,7 @@ describe("generate", () => {
     expect(result).toEqual({
       path: outputPath,
       staticPath: staticOutputPath,
-      frames: 120,
+      frames: 150,
       width: 960,
       height: 320,
     });

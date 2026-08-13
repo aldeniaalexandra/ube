@@ -1,16 +1,29 @@
 <div align="center">
 
-<img src="./assets/ube.gif" alt="Ube, a tiny purple pixel character walking across a GitHub contribution calendar" width="100%" />
+<a href="https://aldeniaalexandra.github.io/ube/"><img src="./assets/ube.gif" alt="Ube tending a Moonlit Garden around a GitHub contribution graph" width="100%" /></a>
 
 </div>
 
 # Ube
 
-**Your contribution graph has a tiny resident.**
+**A living pixel garden for your GitHub profile.**
 
-Ube turns the last 53 weeks of GitHub contributions into a looping pixel scene. The graph stays recognizable, while a small purple character walks above it with a four-frame gait, an occasional blink, and a soft trail of light.
+Ube turns your contribution graph into a small Moonlit Garden. Ube waters plants, reads, naps through quiet weeks, follows fireflies, watches the rain, and celebrates streaks. The contribution graph stays readable underneath the scene, while an in-world Garden Sign shows your current streak and a configurable total.
 
-The banner is generated inside GitHub Actions. You do not need to host a service or hand your data to another account.
+The banner is generated in your own GitHub Action. There is no Ube server, sign-in, token collection, weather API, or telemetry.
+
+## Customize your garden
+
+Open the static [Ube customizer](https://aldeniaalexandra.github.io/ube/). It has a Guided mode for the common choices and an Advanced mode for timing, dimensions, byte budgets, links, and custom character packs. The preview uses representative fixture data; your Action renders live contribution data in your repository.
+
+The customizer exports:
+
+- `ube.config.json`
+- a ready-to-copy workflow
+- a README snippet with one optional link
+- a static PNG preview
+
+The banner link is one configurable destination. By default it opens the customizer with the username prefilled; replace it with a portfolio, website, or any other URL, or leave it empty.
 
 ## Put Ube on your profile
 
@@ -41,69 +54,75 @@ jobs:
       - name: Commit the banner
         shell: bash
         run: |
-          if git diff --quiet -- assets/ube.gif; then
+          if git diff --quiet -- assets/ube.gif assets/ube.png; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- assets/ube.gif
+          git add -- assets/ube.gif assets/ube.png
           git commit -m "chore: refresh Ube banner"
           git push
 ```
 
-Add the generated file to your profile README:
+Use the generated GIF in your README. To make it clickable, wrap the image in one link:
 
 ```markdown
-![Ube walking through my contribution year](assets/ube.gif)
+[![My Moonlit Garden](assets/ube.gif)](https://example.com)
 ```
 
-The example tracks `main` while Ube is in early development. Pin a release tag or commit when you want a fixed version.
+`assets/ube.png` is the still fallback for reduced-motion or users who prefer not to load an animation.
 
 ## Configuration
+
+Existing version-one configs continue to work and automatically receive the Moonlit Garden defaults. New fields are optional:
 
 ```json
 {
   "version": 1,
-  "github": {
-    "username": "aldeniaalexandra"
-  },
+  "github": { "username": "aldeniaalexandra" },
   "character": "characters/ube.json",
   "output": {
     "path": "assets/ube.gif",
     "width": 960,
     "height": 320,
     "fps": 12.5,
-    "durationSeconds": 9.6
+    "durationSeconds": 12
   },
   "theme": {
     "background": "#0d1117",
     "gridEmpty": "#21262d",
     "gridLevels": ["#0e4429", "#006d32", "#26a641", "#39d353"],
     "accent": "#8a63e8"
+  },
+  "experience": {
+    "habitat": "moonlit-garden",
+    "calendar": { "timezone": "Asia/Jakarta", "hemisphere": "north" },
+    "stats": {
+      "period": "calendar-year",
+      "showStreak": true,
+      "showTotal": true
+    },
+    "identity": {
+      "enabled": false,
+      "name": "",
+      "role": "",
+      "style": "quiet-label"
+    },
+    "link": "",
+    "budget": { "targetBytes": 2000000, "hardMaxBytes": 5000000 }
   }
 }
 ```
 
-Paths are resolved from the config file. Canvas sizes from 320 × 160 through 1600 × 800 are supported; the contribution grid scales down cleanly on narrower banners. Invalid colors, dimensions, frame counts, and unknown keys fail with a message that points to the config file and exact field.
+`stats.period` can be `displayed-weeks` (the 53 weeks shown in the graph) or `calendar-year` (year-to-date). This example uses the annual total; the customizer keeps it as the informative default. Identity is optional; choose `quiet-label` or `combined-sign`. The layout remains automatic at every supported size.
+
+Generated GIFs target 2 MB and have a hard 5 MB ceiling. Ube lowers frame density when needed, then emits the PNG fallback alongside the GIF.
 
 ## Draw a different resident
 
-The character pack is plain JSON. It contains a palette and six 12 by 8 pixel frames: idle, blink, and four walking poses.
+Character packs remain plain JSON. The Guided customizer changes Ube’s color; Advanced mode accepts the full pack format. A pack contains a palette and six 12 by 8 pixel frames: idle, blink, and four walking poses. Spaces are transparent. The loader rejects uneven rows and undeclared symbols before rendering.
 
-```json
-{
-  "palette": {
-    "P": "#8A63E8",
-    "H": "#BFAAFF",
-    "S": "#6845C6",
-    "E": "#171225"
-  }
-}
-```
-
-Each visible letter paints one color. A space stays transparent. Edit the matrices in [`characters/ube.json`](./characters/ube.json) to change the silhouette or gait. The loader rejects uneven rows and undeclared symbols before rendering anything.
-
-## Run it locally
+## Run locally
 
 Ube needs Node.js 20 or newer.
 
@@ -114,7 +133,7 @@ npm test
 npm run build
 ```
 
-Generate the deterministic demo banner without contacting GitHub:
+Generate a deterministic demo banner without contacting GitHub:
 
 ```bash
 node dist/cli.js generate \
@@ -122,29 +141,29 @@ node dist/cli.js generate \
   --fixture tests/fixtures/calendar.json
 ```
 
-For live data, set `GITHUB_TOKEN` and omit `--fixture`.
+The same command writes `assets/ube.gif` and `assets/ube.png` unless `--output` is supplied.
 
 ## How it works
 
 ```text
-GitHub GraphQL
-      ↓
+GitHub GraphQL / fixture
+          ↓
 53 × 7 contribution calendar
-      ↓
-deterministic walk timeline
-      ↓
-indexed-pixel renderer
-      ↓
-looping GIF
+          ↓
+activity metrics + calendar season
+          ↓
+deterministic Moonlit Garden vignette plan
+          ↓
+shared indexed-pixel renderer
+       ↙                    ↘
+  GIF + PNG Action       Canvas customizer
 ```
 
-The renderer, character format, Ube artwork, motion system, configuration schema, and GitHub adapter live in this repository. [`gifenc`](https://github.com/mattdesl/gifenc) is the only runtime image dependency. It serializes the indexed frames that Ube has already drawn.
-
-The same engine powers the CLI and the JavaScript Action. Fixture mode never touches the network, which keeps visual tests stable and makes every generated frame reproducible.
+The pure planner and renderer are shared by the Node Action/CLI and the browser customizer. Identical username, calendar, config, and engine version produce the same scene. The only runtime image dependency is `gifenc`; PNG output uses Node’s built-in zlib.
 
 ## Privacy and permissions
 
-Ube requests contribution dates, counts, and intensity levels from GitHub GraphQL. It does not collect telemetry or store your token. The Action only writes the GIF; the workflow above decides whether to commit it.
+Ube requests contribution dates, counts, and intensity levels from GitHub GraphQL. It does not collect telemetry or store your token. The Action only writes the GIF and PNG; your workflow decides whether to commit them.
 
 ## License
 

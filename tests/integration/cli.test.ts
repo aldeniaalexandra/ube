@@ -44,7 +44,7 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([
-      `Generated 120 frames at ${outputPath} (960x320)`,
+      `Generated 150 frames at ${outputPath} and ${outputPath.replace(/\.gif$/, ".png")} (960x320)`,
     ]);
     expect(errors).toEqual([]);
   }, 30_000);
