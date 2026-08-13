@@ -10,9 +10,9 @@ import type { ContributionCalendar, RawContributionDay } from "../../src/contrib
 import { createScene, type Scene } from "../../src/render/scene.js";
 
 const EXPECTED_FRAME_HASHES = [
-  "e58d116149b7a37431d832575f5a1673c53d1538a914b02074924c1b3a744923",
-  "89ada6103578e5f66c3dcaf0306b04ad42dc65a6780b32d6619b29f45d989588",
-  "6acefafb356b12368497b5a79fc3e07cd935b2778847026aed5c40527e9ba942",
+  "1751a4da043a87efa4e2414e6e7358a20fa11dc8fb7f24919925be53df68a4fb",
+  "a341ae6af5bc1564b375785b496cc07be740615998050faea3f1d41eaca204f9",
+  "33396bb926805fbbe3471912e6842730d75faf6d63f893ce6c9308572a79d366",
 ];
 
 let scene: Scene;
@@ -59,6 +59,37 @@ describe("createScene", () => {
     expect([...frame.pixels].filter((pixel) => pixel === woodIndex).length).toBeGreaterThan(100);
   });
 
+  it("places the Garden Sign above and inside the contribution graph", () => {
+    const gridRight = scene.layout.gridLeft + scene.layout.gridWidth;
+    const signFaceBottom = scene.layout.sign.top + scene.layout.sign.height;
+    const signBottom = scene.layout.sign.top
+      + scene.layout.sign.height
+      + scene.layout.sign.postHeight;
+    const characterHeight = character.frames.idle.length * character.cellSize;
+
+    expect(scene.layout.sign.left).toBeGreaterThanOrEqual(scene.layout.gridLeft);
+    expect(scene.layout.sign.left + scene.layout.sign.width).toBe(gridRight);
+    expect(scene.layout.baselineY - signFaceBottom).toBeGreaterThanOrEqual(
+      characterHeight,
+    );
+    expect(signBottom).toBe(scene.layout.baselineY);
+  });
+
+  it("extends the garden path underneath the Garden Sign", () => {
+    const frame = scene.render(calendar, 60);
+    const pathAtGraph = frame.pixels[
+      scene.layout.baselineY * frame.width + scene.layout.gridLeft
+    ] as number;
+    const signCenter = scene.layout.sign.left
+      + Math.floor(scene.layout.sign.width / 2);
+    const pathAtSign = frame.pixels[
+      scene.layout.baselineY * frame.width + signCenter
+    ] as number;
+
+    expect(pathAtGraph).not.toBe(frame.pixels[0]);
+    expect(pathAtSign).toBe(pathAtGraph);
+  });
+
   it("renders the moon as a stepped crescent instead of a square corner", () => {
     const frameIndex = 60;
     const frame = scene.render(calendar, frameIndex);
@@ -102,5 +133,13 @@ describe("createScene", () => {
     expect(gridTop).toBeGreaterThanOrEqual(0);
     expect(cellSize).toBeLessThan(10);
     expect(cellGap).toBeGreaterThanOrEqual(1);
+    expect(compactScene.layout.sign.left).toBeGreaterThanOrEqual(gridLeft);
+    expect(
+      compactScene.layout.sign.left + compactScene.layout.sign.width,
+    ).toBe(gridLeft + compactScene.layout.gridWidth);
+    expect(compactScene.layout.sign.postHeight).toBeGreaterThan(0);
+    expect(
+      compactScene.layout.sign.top + compactScene.layout.sign.height,
+    ).toBeLessThan(compactScene.layout.baselineY);
   });
 });

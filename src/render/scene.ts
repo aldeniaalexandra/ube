@@ -18,7 +18,10 @@ const GRID_BOTTOM_MARGIN = 18;
 const CHARACTER_GRAPH_GAP = 8;
 const CHARACTER_STRIDE_CELLS = 3;
 const SIGN_HEIGHT = 54;
-const SIGN_MARGIN = 14;
+const COMPACT_SIGN_HEIGHT = 44;
+const COMPACT_CANVAS_WIDTH = 720;
+const TOP_MARGIN = 8;
+const PATH_CLEARANCE = 8;
 const PIXEL_SCALE = 2;
 const MOON_CELL_SIZE = 3;
 const MOON_MASK = [
@@ -49,6 +52,13 @@ export interface SceneLayout {
   rows: number;
   baselineY: number;
   gridWidth: number;
+  sign: Readonly<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    postHeight: number;
+  }>;
 }
 
 export interface IndexedFrame {
@@ -67,13 +77,19 @@ export function createScene(
   config: ResolvedConfig,
   character: CharacterPack,
 ): Scene {
-  const layout = createLayout(config.output.width, config.output.height);
+  const characterWidth = character.frames.idle[0]?.length ?? 0;
+  const characterHeight = character.frames.idle.length;
+  const scaledCharacterWidth = characterWidth * character.cellSize;
+  const scaledCharacterHeight = characterHeight * character.cellSize;
+  const layout = createLayout(
+    config.output.width,
+    config.output.height,
+    scaledCharacterHeight,
+  );
   const palette = createPalette(config, character);
   const frameCount = Math.round(
     config.output.fps * config.output.durationSeconds,
   );
-  const characterWidth = character.frames.idle[0]?.length ?? 0;
-  const scaledCharacterWidth = characterWidth * character.cellSize;
   const gridStep = layout.cellSize + layout.cellGap;
 
   return Object.freeze({
@@ -99,7 +115,7 @@ export function createScene(
       drawBackground(buffer, palette, config, plan, frameIndex, frameCount);
       drawBaseline(buffer, palette, config, layout);
       drawCalendar(buffer, palette, config, layout, calendar, sample.wakeColumn);
-      drawGardenProps(buffer, palette, config, layout, plan, frameIndex, frameCount);
+      drawGardenProps(buffer, palette, config, layout, plan);
       drawCharacter(
         buffer,
         palette,
@@ -120,8 +136,19 @@ export function createScene(
   });
 }
 
-function createLayout(width: number, height: number): SceneLayout {
-  const { cellSize, cellGap } = fitGridToWidth(width);
+function createLayout(
+  width: number,
+  height: number,
+  characterHeight: number,
+): SceneLayout {
+  const isCompact = width < COMPACT_CANVAS_WIDTH;
+  const signHeight = isCompact ? COMPACT_SIGN_HEIGHT : SIGN_HEIGHT;
+  const minimumBaselineY = TOP_MARGIN + signHeight + characterHeight + PATH_CLEARANCE;
+  const maximumGridHeight = height
+    - GRID_BOTTOM_MARGIN
+    - CHARACTER_GRAPH_GAP
+    - minimumBaselineY;
+  const { cellSize, cellGap } = fitGridToArea(width, maximumGridHeight);
   const gridWidth =
     GRID_COLUMNS * cellSize + (GRID_COLUMNS - 1) * cellGap;
   const gridHeight =
@@ -132,6 +159,15 @@ function createLayout(width: number, height: number): SceneLayout {
     throw new RangeError("canvas is too small for the contribution scene");
   }
 
+  const baselineY = gridTop - CHARACTER_GRAPH_GAP;
+  const signWidth = Math.min(
+    204,
+    Math.max(132, Math.floor(width * (isCompact ? 0.42 : 0.22))),
+  );
+  const signLeft = gridLeft + gridWidth - signWidth;
+  const signTop = baselineY - characterHeight - PATH_CLEARANCE - signHeight;
+  const postHeight = characterHeight + PATH_CLEARANCE;
+
   return Object.freeze({
     gridLeft,
     gridTop,
@@ -139,16 +175,30 @@ function createLayout(width: number, height: number): SceneLayout {
     cellGap,
     columns: GRID_COLUMNS,
     rows: GRID_ROWS,
-    baselineY: gridTop - CHARACTER_GRAPH_GAP,
+    baselineY,
     gridWidth,
+    sign: Object.freeze({
+      left: signLeft,
+      top: signTop,
+      width: signWidth,
+      height: signHeight,
+      postHeight,
+    }),
   });
 }
 
-function fitGridToWidth(width: number): { cellSize: number; cellGap: number } {
+function fitGridToArea(
+  width: number,
+  height: number,
+): { cellSize: number; cellGap: number } {
   for (let cellSize = GRID_CELL_SIZE; cellSize >= 1; cellSize -= 1) {
-    const availableGap = Math.floor(
+    const horizontalGap = Math.floor(
       (width - GRID_COLUMNS * cellSize) / (GRID_COLUMNS - 1),
     );
+    const verticalGap = Math.floor(
+      (height - GRID_ROWS * cellSize) / (GRID_ROWS - 1),
+    );
+    const availableGap = Math.min(horizontalGap, verticalGap);
     if (availableGap >= GRID_MINIMUM_GAP) {
       return {
         cellSize,
@@ -156,7 +206,7 @@ function fitGridToWidth(width: number): { cellSize: number; cellGap: number } {
       };
     }
   }
-  throw new RangeError("canvas is too narrow for the contribution scene");
+  throw new RangeError("canvas is too small for the contribution scene");
 }
 
 function createPalette(
@@ -307,14 +357,12 @@ function drawGardenProps(
   config: ResolvedConfig,
   layout: SceneLayout,
   plan: ScenePlan,
-  frameIndex: number,
-  frameCount: number,
 ): void {
   const groundY = layout.baselineY - 1;
   const plantColor = palette.index(plan.season === "autumn" ? "#d09b67" : "#65b96f");
   const leafColor = palette.index(plan.season === "winter" ? "#8da8b5" : "#96e6a5");
-  for (const offset of [26, 118, 242, 348]) {
-    const x = layout.gridLeft + offset;
+  for (const position of [0.04, 0.18, 0.34, 0.52]) {
+    const x = layout.gridLeft + Math.round(layout.gridWidth * position);
     buffer.fillRect(x, groundY - 13, 2, 13, plantColor);
     buffer.fillRect(x - 5, groundY - 15, 7, 4, leafColor);
     buffer.fillRect(x + 2, groundY - 20, 7, 4, leafColor);
@@ -322,9 +370,8 @@ function drawGardenProps(
 
   drawGardenSign(buffer, palette, config, layout, plan);
   if (plan.identity.enabled && (plan.identity.name || plan.identity.role)) {
-    drawIdentity(buffer, palette, config, plan, layout);
+    drawIdentity(buffer, palette, plan, layout);
   }
-  drawLantern(buffer, palette, layout, frameIndex, frameCount);
 }
 
 function drawGardenSign(
@@ -334,10 +381,13 @@ function drawGardenSign(
   layout: SceneLayout,
   plan: ScenePlan,
 ): void {
-  const signWidth = Math.min(204, Math.max(132, Math.floor(buffer.width * 0.22)));
-  const signHeight = SIGN_HEIGHT;
-  const signLeft = buffer.width - signWidth - SIGN_MARGIN;
-  const signTop = Math.max(8, layout.baselineY - signHeight - 18);
+  const {
+    left: signLeft,
+    top: signTop,
+    width: signWidth,
+    height: signHeight,
+    postHeight,
+  } = layout.sign;
   const wood = palette.index("#684c2e");
   const woodLight = palette.index("#8b6840");
   const post = palette.index("#5a4027");
@@ -346,8 +396,10 @@ function drawGardenSign(
 
   buffer.fillRect(signLeft, signTop, signWidth, signHeight, wood);
   buffer.fillRect(signLeft + 5, signTop + 5, signWidth - 10, signHeight - 10, woodLight);
-  buffer.fillRect(signLeft + 14, signTop + signHeight, 10, 20, post);
-  buffer.fillRect(signLeft + signWidth - 24, signTop + signHeight, 10, 20, post);
+  if (postHeight > 0) {
+    buffer.fillRect(signLeft + 14, signTop + signHeight, 10, postHeight, post);
+    buffer.fillRect(signLeft + signWidth - 24, signTop + signHeight, 10, postHeight, post);
+  }
 
   const statsPeriod = config.experience.stats.period;
   const total = statsPeriod === "calendar-year"
@@ -372,7 +424,6 @@ function drawGardenSign(
 function drawIdentity(
   buffer: FrameBuffer,
   palette: Palette,
-  config: ResolvedConfig,
   plan: ScenePlan,
   layout: SceneLayout,
 ): void {
@@ -381,9 +432,9 @@ function drawIdentity(
   const textColor = palette.index("#eee9ff");
   const roleColor = palette.index("#87dba8");
   if (plan.identity.style === "combined-sign") {
-    const signLeft = Math.max(10, buffer.width - Math.min(246, Math.floor(buffer.width * 0.27)) - SIGN_MARGIN);
-    const signTop = Math.max(8, layout.baselineY - SIGN_HEIGHT - 84);
-    buffer.fillRect(signLeft, signTop, Math.min(246, Math.floor(buffer.width * 0.27)), 39, palette.index("#684c2e"));
+    const signLeft = layout.sign.left;
+    const signTop = Math.max(TOP_MARGIN, layout.sign.top - 47);
+    buffer.fillRect(signLeft, signTop, layout.sign.width, 39, palette.index("#684c2e"));
     drawText(buffer, palette, name.slice(0, 14), signLeft + 10, signTop + 7, textColor, 1);
     drawText(buffer, palette, role.slice(0, 22), signLeft + 10, signTop + 22, roleColor, 1);
     return;
@@ -393,23 +444,6 @@ function drawIdentity(
   const top = Math.max(8, Math.floor(buffer.height * 0.12));
   drawText(buffer, palette, name.slice(0, 16), left, top, textColor, 1);
   drawText(buffer, palette, role.slice(0, 24), left, top + 9, roleColor, 1);
-}
-
-function drawLantern(
-  buffer: FrameBuffer,
-  palette: Palette,
-  layout: SceneLayout,
-  frameIndex: number,
-  frameCount: number,
-): void {
-  const x = layout.gridLeft + layout.gridWidth - 28;
-  const y = layout.baselineY - 34;
-  const glow = palette.index("#f5dca1");
-  const phase = Math.floor((frameIndex / frameCount) * 4) % 2;
-  buffer.fillRect(x + 4, y - 7, 6, 3, glow);
-  buffer.fillRect(x + 2, y - 4, 10, 13, palette.index(phase === 0 ? "#8b6840" : "#684c2e"));
-  buffer.fillRect(x + 5, y - 1, 4, 7, glow);
-  buffer.fillRect(x + 4, y + 9, 6, 2, palette.index("#5a4027"));
 }
 
 function drawVignette(
@@ -487,13 +521,10 @@ function drawBaseline(
   config: ResolvedConfig,
   layout: SceneLayout,
 ): void {
-  const width =
-    layout.columns * layout.cellSize +
-    (layout.columns - 1) * layout.cellGap;
   const color = palette.index(
     mixHex(config.theme.gridEmpty, config.theme.accent, 0.35),
   );
-  buffer.fillRect(layout.gridLeft, layout.baselineY, width, 1, color);
+  buffer.fillRect(layout.gridLeft, layout.baselineY, layout.gridWidth, 1, color);
 }
 
 function drawCalendar(

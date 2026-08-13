@@ -2563,7 +2563,10 @@ var GRID_BOTTOM_MARGIN = 18;
 var CHARACTER_GRAPH_GAP = 8;
 var CHARACTER_STRIDE_CELLS = 3;
 var SIGN_HEIGHT = 54;
-var SIGN_MARGIN = 14;
+var COMPACT_SIGN_HEIGHT = 44;
+var COMPACT_CANVAS_WIDTH = 720;
+var TOP_MARGIN = 8;
+var PATH_CLEARANCE = 8;
 var MOON_CELL_SIZE = 3;
 var MOON_MASK = [
   "  1111 ",
@@ -2584,13 +2587,19 @@ var MOON_CUTOUT = [
   "     1 "
 ];
 function createScene(config, character) {
-  const layout = createLayout(config.output.width, config.output.height);
+  const characterWidth = character.frames.idle[0]?.length ?? 0;
+  const characterHeight = character.frames.idle.length;
+  const scaledCharacterWidth = characterWidth * character.cellSize;
+  const scaledCharacterHeight = characterHeight * character.cellSize;
+  const layout = createLayout(
+    config.output.width,
+    config.output.height,
+    scaledCharacterHeight
+  );
   const palette = createPalette(config, character);
   const frameCount = Math.round(
     config.output.fps * config.output.durationSeconds
   );
-  const characterWidth = character.frames.idle[0]?.length ?? 0;
-  const scaledCharacterWidth = characterWidth * character.cellSize;
   const gridStep = layout.cellSize + layout.cellGap;
   return Object.freeze({
     layout,
@@ -2614,7 +2623,7 @@ function createScene(config, character) {
       drawBackground(buffer, palette, config, plan, frameIndex, frameCount);
       drawBaseline(buffer, palette, config, layout);
       drawCalendar(buffer, palette, config, layout, calendar2, sample.wakeColumn);
-      drawGardenProps(buffer, palette, config, layout, plan, frameIndex, frameCount);
+      drawGardenProps(buffer, palette, config, layout, plan);
       drawCharacter(
         buffer,
         palette,
@@ -2633,8 +2642,12 @@ function createScene(config, character) {
     }
   });
 }
-function createLayout(width, height) {
-  const { cellSize, cellGap } = fitGridToWidth(width);
+function createLayout(width, height, characterHeight) {
+  const isCompact = width < COMPACT_CANVAS_WIDTH;
+  const signHeight = isCompact ? COMPACT_SIGN_HEIGHT : SIGN_HEIGHT;
+  const minimumBaselineY = TOP_MARGIN + signHeight + characterHeight + PATH_CLEARANCE;
+  const maximumGridHeight = height - GRID_BOTTOM_MARGIN - CHARACTER_GRAPH_GAP - minimumBaselineY;
+  const { cellSize, cellGap } = fitGridToArea(width, maximumGridHeight);
   const gridWidth = GRID_COLUMNS * cellSize + (GRID_COLUMNS - 1) * cellGap;
   const gridHeight = GRID_ROWS * cellSize + (GRID_ROWS - 1) * cellGap;
   const gridLeft = Math.floor((width - gridWidth) / 2);
@@ -2642,6 +2655,14 @@ function createLayout(width, height) {
   if (gridLeft < 0 || gridTop < 0) {
     throw new RangeError("canvas is too small for the contribution scene");
   }
+  const baselineY = gridTop - CHARACTER_GRAPH_GAP;
+  const signWidth = Math.min(
+    204,
+    Math.max(132, Math.floor(width * (isCompact ? 0.42 : 0.22)))
+  );
+  const signLeft = gridLeft + gridWidth - signWidth;
+  const signTop = baselineY - characterHeight - PATH_CLEARANCE - signHeight;
+  const postHeight = characterHeight + PATH_CLEARANCE;
   return Object.freeze({
     gridLeft,
     gridTop,
@@ -2649,15 +2670,26 @@ function createLayout(width, height) {
     cellGap,
     columns: GRID_COLUMNS,
     rows: GRID_ROWS,
-    baselineY: gridTop - CHARACTER_GRAPH_GAP,
-    gridWidth
+    baselineY,
+    gridWidth,
+    sign: Object.freeze({
+      left: signLeft,
+      top: signTop,
+      width: signWidth,
+      height: signHeight,
+      postHeight
+    })
   });
 }
-function fitGridToWidth(width) {
+function fitGridToArea(width, height) {
   for (let cellSize = GRID_CELL_SIZE; cellSize >= 1; cellSize -= 1) {
-    const availableGap = Math.floor(
+    const horizontalGap = Math.floor(
       (width - GRID_COLUMNS * cellSize) / (GRID_COLUMNS - 1)
     );
+    const verticalGap = Math.floor(
+      (height - GRID_ROWS * cellSize) / (GRID_ROWS - 1)
+    );
+    const availableGap = Math.min(horizontalGap, verticalGap);
     if (availableGap >= GRID_MINIMUM_GAP) {
       return {
         cellSize,
@@ -2665,7 +2697,7 @@ function fitGridToWidth(width) {
       };
     }
   }
-  throw new RangeError("canvas is too narrow for the contribution scene");
+  throw new RangeError("canvas is too small for the contribution scene");
 }
 function createPalette(config, character) {
   const palette = new Palette(config.theme.background);
@@ -2784,27 +2816,29 @@ function drawWeather(buffer, palette, weather, frameIndex, frameCount) {
     buffer.fillRect(x, y, weather === "mist" ? 9 : 2, weather === "mist" ? 1 : 8, mist);
   }
 }
-function drawGardenProps(buffer, palette, config, layout, plan, frameIndex, frameCount) {
+function drawGardenProps(buffer, palette, config, layout, plan) {
   const groundY = layout.baselineY - 1;
   const plantColor = palette.index(plan.season === "autumn" ? "#d09b67" : "#65b96f");
   const leafColor = palette.index(plan.season === "winter" ? "#8da8b5" : "#96e6a5");
-  for (const offset of [26, 118, 242, 348]) {
-    const x = layout.gridLeft + offset;
+  for (const position of [0.04, 0.18, 0.34, 0.52]) {
+    const x = layout.gridLeft + Math.round(layout.gridWidth * position);
     buffer.fillRect(x, groundY - 13, 2, 13, plantColor);
     buffer.fillRect(x - 5, groundY - 15, 7, 4, leafColor);
     buffer.fillRect(x + 2, groundY - 20, 7, 4, leafColor);
   }
   drawGardenSign(buffer, palette, config, layout, plan);
   if (plan.identity.enabled && (plan.identity.name || plan.identity.role)) {
-    drawIdentity(buffer, palette, config, plan, layout);
+    drawIdentity(buffer, palette, plan, layout);
   }
-  drawLantern(buffer, palette, layout, frameIndex, frameCount);
 }
 function drawGardenSign(buffer, palette, config, layout, plan) {
-  const signWidth = Math.min(204, Math.max(132, Math.floor(buffer.width * 0.22)));
-  const signHeight = SIGN_HEIGHT;
-  const signLeft = buffer.width - signWidth - SIGN_MARGIN;
-  const signTop = Math.max(8, layout.baselineY - signHeight - 18);
+  const {
+    left: signLeft,
+    top: signTop,
+    width: signWidth,
+    height: signHeight,
+    postHeight
+  } = layout.sign;
   const wood = palette.index("#684c2e");
   const woodLight = palette.index("#8b6840");
   const post = palette.index("#5a4027");
@@ -2812,8 +2846,10 @@ function drawGardenSign(buffer, palette, config, layout, plan) {
   const value = palette.index("#fff3ce");
   buffer.fillRect(signLeft, signTop, signWidth, signHeight, wood);
   buffer.fillRect(signLeft + 5, signTop + 5, signWidth - 10, signHeight - 10, woodLight);
-  buffer.fillRect(signLeft + 14, signTop + signHeight, 10, 20, post);
-  buffer.fillRect(signLeft + signWidth - 24, signTop + signHeight, 10, 20, post);
+  if (postHeight > 0) {
+    buffer.fillRect(signLeft + 14, signTop + signHeight, 10, postHeight, post);
+    buffer.fillRect(signLeft + signWidth - 24, signTop + signHeight, 10, postHeight, post);
+  }
   const statsPeriod = config.experience.stats.period;
   const total = statsPeriod === "calendar-year" ? plan.metrics.calendarYearTotal : plan.metrics.displayedTotal;
   const width = signWidth - 28;
@@ -2831,15 +2867,15 @@ function drawGardenSign(buffer, palette, config, layout, plan) {
     drawText(buffer, palette, `${total}`, cursor, signTop + 27, value, 1);
   }
 }
-function drawIdentity(buffer, palette, config, plan, layout) {
+function drawIdentity(buffer, palette, plan, layout) {
   const name = plan.identity.name.trim().toUpperCase();
   const role = plan.identity.role.trim().toUpperCase();
   const textColor = palette.index("#eee9ff");
   const roleColor = palette.index("#87dba8");
   if (plan.identity.style === "combined-sign") {
-    const signLeft = Math.max(10, buffer.width - Math.min(246, Math.floor(buffer.width * 0.27)) - SIGN_MARGIN);
-    const signTop = Math.max(8, layout.baselineY - SIGN_HEIGHT - 84);
-    buffer.fillRect(signLeft, signTop, Math.min(246, Math.floor(buffer.width * 0.27)), 39, palette.index("#684c2e"));
+    const signLeft = layout.sign.left;
+    const signTop = Math.max(TOP_MARGIN, layout.sign.top - 47);
+    buffer.fillRect(signLeft, signTop, layout.sign.width, 39, palette.index("#684c2e"));
     drawText(buffer, palette, name.slice(0, 14), signLeft + 10, signTop + 7, textColor, 1);
     drawText(buffer, palette, role.slice(0, 22), signLeft + 10, signTop + 22, roleColor, 1);
     return;
@@ -2848,16 +2884,6 @@ function drawIdentity(buffer, palette, config, plan, layout) {
   const top = Math.max(8, Math.floor(buffer.height * 0.12));
   drawText(buffer, palette, name.slice(0, 16), left, top, textColor, 1);
   drawText(buffer, palette, role.slice(0, 24), left, top + 9, roleColor, 1);
-}
-function drawLantern(buffer, palette, layout, frameIndex, frameCount) {
-  const x = layout.gridLeft + layout.gridWidth - 28;
-  const y = layout.baselineY - 34;
-  const glow = palette.index("#f5dca1");
-  const phase = Math.floor(frameIndex / frameCount * 4) % 2;
-  buffer.fillRect(x + 4, y - 7, 6, 3, glow);
-  buffer.fillRect(x + 2, y - 4, 10, 13, palette.index(phase === 0 ? "#8b6840" : "#684c2e"));
-  buffer.fillRect(x + 5, y - 1, 4, 7, glow);
-  buffer.fillRect(x + 4, y + 9, 6, 2, palette.index("#5a4027"));
 }
 function drawVignette(buffer, palette, config, layout, plan, characterX, frameIndex, frameCount) {
   const x = Math.max(6, Math.min(buffer.width - 24, characterX + 36));
@@ -2916,11 +2942,10 @@ function seasonSkyColor(background, season) {
   return mixHex(background, seasonTint[season], 0.28);
 }
 function drawBaseline(buffer, palette, config, layout) {
-  const width = layout.columns * layout.cellSize + (layout.columns - 1) * layout.cellGap;
   const color = palette.index(
     mixHex(config.theme.gridEmpty, config.theme.accent, 0.35)
   );
-  buffer.fillRect(layout.gridLeft, layout.baselineY, width, 1, color);
+  buffer.fillRect(layout.gridLeft, layout.baselineY, layout.gridWidth, 1, color);
 }
 function drawCalendar(buffer, palette, config, layout, calendar2, wakeColumn) {
   const step = layout.cellSize + layout.cellGap;
