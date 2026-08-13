@@ -23,6 +23,7 @@ describe("runAction", () => {
     const generatedPath = join(directory, "assets", "100%-ube.gif");
     const generateImpl = async (_options: GenerateOptions): Promise<GenerateResult> => ({
       path: generatedPath,
+      staticPath: generatedPath.replace(/\.gif$/, ".png"),
       frames: 120,
       width: 960,
       height: 320,

@@ -79,4 +79,64 @@ describe("loadConfig", () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it("normalizes a legacy config to Moonlit Garden defaults", async () => {
+    const loaded = await loadConfig(resolve("ube.config.json"));
+
+    expect(loaded.experience).toMatchObject({
+      habitat: "moonlit-garden",
+      stats: { period: "displayed-weeks", showStreak: true, showTotal: true },
+      identity: {
+        enabled: false,
+        name: "",
+        role: "",
+        style: "quiet-label",
+      },
+      budget: { targetBytes: 2_000_000, hardMaxBytes: 5_000_000 },
+    });
+  });
+
+  it("preserves explicit experience settings in a version-two config", () => {
+    const config = validateConfig({
+      ...validConfig,
+      version: 2,
+      experience: {
+        habitat: "moonlit-garden",
+        calendar: { timezone: "Asia/Jakarta", hemisphere: "south" },
+        stats: {
+          period: "calendar-year",
+          showStreak: false,
+          showTotal: true,
+        },
+        identity: {
+          enabled: true,
+          name: "Sandra",
+          role: "Creative Developer",
+          style: "combined-sign",
+        },
+        link: "https://example.com",
+        budget: { targetBytes: 1_500_000, hardMaxBytes: 4_000_000 },
+      },
+    });
+
+    expect(config).toMatchObject({
+      version: 2,
+      experience: {
+        calendar: { timezone: "Asia/Jakarta", hemisphere: "south" },
+        stats: { period: "calendar-year", showStreak: false, showTotal: true },
+        identity: { enabled: true, style: "combined-sign" },
+      },
+    });
+  });
+
+  it("reports the exact path of an invalid experience field", () => {
+    expect(() =>
+      validateConfig({
+        ...validConfig,
+        experience: {
+          stats: { period: "forever" },
+        },
+      }),
+    ).toThrow("experience.stats.period must be displayed-weeks or calendar-year");
+  });
 });

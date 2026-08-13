@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadCharacter, validateCharacter } from "../../src/character/load.js";
+import { validateCharacter as validateCharacterBrowserSafe } from "../../src/character/validate.js";
 
 const blankFrame = Array.from({ length: 8 }, () => " ".repeat(12));
 
@@ -37,6 +38,11 @@ describe("loadCharacter", () => {
 });
 
 describe("validateCharacter", () => {
+  it("exports the same validator from the browser-safe module", () => {
+    const pack = validPack();
+    expect(validateCharacterBrowserSafe(pack).name).toBe("Test buddy");
+  });
+
   it("points to the exact undeclared symbol", () => {
     const pack = validPack();
     const frames = pack.frames as Record<string, unknown>;

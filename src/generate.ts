@@ -6,6 +6,8 @@ import { fetchContributionDays } from "./contributions/github.js";
 import { normalizeCalendar } from "./contributions/normalize.js";
 import type { RawContributionDay } from "./contributions/types.js";
 import { encodeGif, writeGifAtomic } from "./output/gif.js";
+import { selectFramesWithinBudget } from "./output/budget.js";
+import { encodePng, writePngAtomic } from "./output/png.js";
 import { createScene, type IndexedFrame } from "./render/scene.js";
 
 const MILLISECONDS_PER_DAY = 86_400_000;
@@ -21,6 +23,7 @@ export interface GenerateOptions {
 
 export interface GenerateResult {
   path: string;
+  staticPath: string;
   frames: number;
   width: number;
   height: number;
@@ -44,19 +47,40 @@ export async function generate(
     frames.push(scene.render(calendar, frameIndex));
   }
 
-  const delayMs = Math.round(1000 / config.output.fps);
-  const bytes = encodeGif(frames, delayMs);
   const outputPath = options.outputPath
     ? resolve(options.outputPath)
     : config.outputPath;
-  await writeGifAtomic(outputPath, bytes);
+  const budgeted = selectFramesWithinBudget(
+    frames,
+    (candidate) => encodeGif(candidate, animationDelay(config.output.durationSeconds, candidate.length)),
+    config.experience.budget,
+  );
+  const delayMs = animationDelay(config.output.durationSeconds, budgeted.frames.length);
+  const bytes = budgeted.bytes.length > 0
+    ? budgeted.bytes
+    : encodeGif(budgeted.frames, delayMs);
+  const staticPath = createStaticPath(outputPath);
+  const staticFrame = budgeted.frames[Math.floor(budgeted.frames.length / 2)] as IndexedFrame;
+  await Promise.all([
+    writeGifAtomic(outputPath, bytes),
+    writePngAtomic(staticPath, encodePng(staticFrame)),
+  ]);
 
   return {
     path: outputPath,
-    frames: frameCount,
+    staticPath,
+    frames: budgeted.frames.length,
     width: config.output.width,
     height: config.output.height,
   };
+}
+
+function animationDelay(durationSeconds: number, frameCount: number): number {
+  return Math.max(10, Math.round((durationSeconds * 1_000) / frameCount));
+}
+
+function createStaticPath(outputPath: string): string {
+  return outputPath.replace(/\.[^.\\/]+$/, ".png");
 }
 
 async function loadFixture(

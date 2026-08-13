@@ -10,9 +10,9 @@ import type { ContributionCalendar, RawContributionDay } from "../../src/contrib
 import { createScene, type Scene } from "../../src/render/scene.js";
 
 const EXPECTED_FRAME_HASHES = [
-  "2d3031623b50cb2ad308f5d007c9d5d378986e3a881c8bd129a284d503165279",
-  "9515738829c10418f9addfd1be8dfdee7e1c800eec8cd4c32aec0d3ecebf9be8",
-  "2d3031623b50cb2ad308f5d007c9d5d378986e3a881c8bd129a284d503165279",
+  "b286bd1a82628120dcf30200bb5b3ffedd57c4c410651f9697fea7f0e72099fe",
+  "95d4380f0fe6815962409bed32e572b5dba269d6db0b0d7278ced6bb837e8830",
+  "973372cdcaa7d4e753e687789769b2e7b1a65ca9d12a5e6df292672de862135e",
 ];
 
 let scene: Scene;
@@ -47,6 +47,16 @@ describe("createScene", () => {
     expect(frame.width).toBe(960);
     expect(frame.height).toBe(320);
     expect(paintedOrigins).toBe(371);
+  });
+
+  it("renders a wooden Garden Sign layer above the contribution graph", () => {
+    const frame = scene.render(calendar, 60);
+    const woodIndex = frame.palette.findIndex(
+      (color) => color[0] === 139 && color[1] === 104 && color[2] === 64,
+    );
+
+    expect(woodIndex).toBeGreaterThanOrEqual(0);
+    expect([...frame.pixels].filter((pixel) => pixel === woodIndex).length).toBeGreaterThan(100);
   });
 
   it("produces stable entrance, midpoint, and exit frames", () => {

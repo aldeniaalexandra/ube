@@ -2,7 +2,10 @@ import { sampleTimeline } from "../animation/timeline.js";
 import type { CharacterPack, SpriteFrame } from "../character/types.js";
 import type { ResolvedConfig } from "../config/schema.js";
 import type { ContributionCalendar, ContributionLevel } from "../contributions/types.js";
+import { planScene } from "../experience/planner.js";
+import type { ScenePlan, Season, Weather } from "../experience/types.js";
 import { FrameBuffer } from "./framebuffer.js";
+import { drawText } from "./font.js";
 import { Palette } from "./palette.js";
 import { drawSprite } from "./primitives.js";
 
@@ -14,6 +17,9 @@ const GRID_MINIMUM_GAP = 1;
 const GRID_BOTTOM_MARGIN = 18;
 const CHARACTER_GRAPH_GAP = 8;
 const CHARACTER_STRIDE_CELLS = 3;
+const SIGN_HEIGHT = 54;
+const SIGN_MARGIN = 14;
+const PIXEL_SCALE = 2;
 
 export interface SceneLayout {
   gridLeft: number;
@@ -23,6 +29,7 @@ export interface SceneLayout {
   columns: number;
   rows: number;
   baselineY: number;
+  gridWidth: number;
 }
 
 export interface IndexedFrame {
@@ -54,6 +61,7 @@ export function createScene(
     layout,
     render(calendar: ContributionCalendar, frameIndex: number): IndexedFrame {
       validateCalendar(calendar);
+      const plan = planScene(calendar, config);
       const sample = sampleTimeline(frameIndex, {
         frameCount,
         canvasWidth: config.output.width,
@@ -69,9 +77,10 @@ export function createScene(
         0,
       );
 
-      drawBackground(buffer, palette, config);
+      drawBackground(buffer, palette, config, plan, frameIndex, frameCount);
       drawBaseline(buffer, palette, config, layout);
       drawCalendar(buffer, palette, config, layout, calendar, sample.wakeColumn);
+      drawGardenProps(buffer, palette, config, layout, plan, frameIndex, frameCount);
       drawCharacter(
         buffer,
         palette,
@@ -80,6 +89,7 @@ export function createScene(
         sample.x,
         layout.baselineY + sample.bob,
       );
+      drawVignette(buffer, palette, config, layout, plan, sample.x, frameIndex, frameCount);
 
       return {
         width: buffer.width,
@@ -111,6 +121,7 @@ function createLayout(width: number, height: number): SceneLayout {
     columns: GRID_COLUMNS,
     rows: GRID_ROWS,
     baselineY: gridTop - CHARACTER_GRAPH_GAP,
+    gridWidth,
   });
 }
 
@@ -139,6 +150,25 @@ function createPalette(
   palette.index(config.theme.gridEmpty);
   for (const color of config.theme.gridLevels) palette.index(color);
   palette.index(mixHex(config.theme.gridEmpty, config.theme.accent, 0.35));
+  for (const color of [
+    "#f5dca1",
+    "#eee9ff",
+    "#87dba8",
+    "#8ee9ad",
+    "#65b96f",
+    "#96e6a5",
+    "#684c2e",
+    "#8b6840",
+    "#5a4027",
+    "#d9c79d",
+    "#fff3ce",
+    "#8da8b5",
+    "#496c76",
+    "#a7d9df",
+    "#273e53",
+    "#6f52ca",
+    "#c7a0ef",
+  ]) palette.index(color);
   for (const color of Object.values(character.palette)) palette.index(color);
   return palette;
 }
@@ -147,17 +177,254 @@ function drawBackground(
   buffer: FrameBuffer,
   palette: Palette,
   config: ResolvedConfig,
+  plan: ScenePlan,
+  frameIndex: number,
+  frameCount: number,
 ): void {
-  const topColor = palette.index(
-    mixHex(config.theme.background, config.theme.accent, 0.08),
-  );
+  const topColor = palette.index(seasonSkyColor(config.theme.background, plan.season));
   const middleColor = palette.index(
     mixHex(config.theme.background, config.theme.accent, 0.04),
   );
-  const topHeight = Math.floor(buffer.height * 0.3);
-  const middleHeight = Math.floor(buffer.height * 0.25);
+  const topHeight = Math.floor(buffer.height * 0.32);
+  const middleHeight = Math.floor(buffer.height * 0.24);
   buffer.fillRect(0, 0, buffer.width, topHeight, topColor);
   buffer.fillRect(0, topHeight, buffer.width, middleHeight, middleColor);
+
+  const moonX = Math.max(26, buffer.width - 90);
+  const moonY = 34 + Math.round(Math.sin((frameIndex / frameCount) * Math.PI * 2) * 2);
+  const moon = palette.index("#f5dca1");
+  const shadow = topColor;
+  buffer.fillRect(moonX, moonY, 22, 22, moon);
+  buffer.fillRect(moonX + 7, moonY - 3, 22, 22, shadow);
+
+  drawStars(buffer, palette, plan.seed);
+  drawWeather(buffer, palette, plan.weather, frameIndex, frameCount);
+}
+
+function drawStars(buffer: FrameBuffer, palette: Palette, seed: number): void {
+  const color = palette.index("#8ee9ad");
+  const softColor = palette.index("#c7a0ef");
+  const stars = [
+    [0.08, 0.18], [0.17, 0.29], [0.27, 0.14], [0.39, 0.24],
+    [0.52, 0.12], [0.63, 0.27], [0.74, 0.16], [0.86, 0.25],
+    [0.93, 0.12],
+  ];
+  for (const [index, [relativeX, relativeY]] of stars.entries()) {
+    const x = Math.floor(buffer.width * (relativeX as number));
+    const y = Math.floor(buffer.height * (relativeY as number));
+    const paletteIndex = ((seed + index) % 3 === 0) ? softColor : color;
+    buffer.fillRect(x, y, 2, 2, paletteIndex);
+  }
+}
+
+function drawWeather(
+  buffer: FrameBuffer,
+  palette: Palette,
+  weather: Weather,
+  frameIndex: number,
+  frameCount: number,
+): void {
+  if (weather === "clear") return;
+  const phase = Math.floor((frameIndex / frameCount) * 8);
+  if (weather === "clouds") {
+    const cloud = palette.index("#273e53");
+    for (const x of [0.14, 0.55, 0.78]) {
+      const left = Math.floor(buffer.width * x) + ((phase % 2) * 2);
+      const top = Math.floor(buffer.height * (0.24 + (x * 0.03)));
+      buffer.fillRect(left, top, 32, 5, cloud);
+      buffer.fillRect(left + 8, top - 4, 20, 5, cloud);
+      buffer.fillRect(left + 15, top - 7, 10, 4, cloud);
+    }
+    return;
+  }
+
+  const mist = palette.index(weather === "mist" ? "#a7d9df" : "#8da8b5");
+  const lineCount = weather === "mist" ? 6 : 12;
+  for (let index = 0; index < lineCount; index += 1) {
+    const x = (index * 83 + phase * 7) % Math.max(1, buffer.width - 4);
+    const y = 54 + ((index * 29 + phase * 3) % Math.max(1, Math.floor(buffer.height * 0.35)));
+    buffer.fillRect(x, y, weather === "mist" ? 9 : 2, weather === "mist" ? 1 : 8, mist);
+  }
+}
+
+function drawGardenProps(
+  buffer: FrameBuffer,
+  palette: Palette,
+  config: ResolvedConfig,
+  layout: SceneLayout,
+  plan: ScenePlan,
+  frameIndex: number,
+  frameCount: number,
+): void {
+  const groundY = layout.baselineY - 1;
+  const plantColor = palette.index(plan.season === "autumn" ? "#d09b67" : "#65b96f");
+  const leafColor = palette.index(plan.season === "winter" ? "#8da8b5" : "#96e6a5");
+  for (const offset of [26, 118, 242, 348]) {
+    const x = layout.gridLeft + offset;
+    buffer.fillRect(x, groundY - 13, 2, 13, plantColor);
+    buffer.fillRect(x - 5, groundY - 15, 7, 4, leafColor);
+    buffer.fillRect(x + 2, groundY - 20, 7, 4, leafColor);
+  }
+
+  drawGardenSign(buffer, palette, config, layout, plan);
+  if (plan.identity.enabled && (plan.identity.name || plan.identity.role)) {
+    drawIdentity(buffer, palette, config, plan, layout);
+  }
+  drawLantern(buffer, palette, layout, frameIndex, frameCount);
+}
+
+function drawGardenSign(
+  buffer: FrameBuffer,
+  palette: Palette,
+  config: ResolvedConfig,
+  layout: SceneLayout,
+  plan: ScenePlan,
+): void {
+  const signWidth = Math.min(204, Math.max(132, Math.floor(buffer.width * 0.22)));
+  const signHeight = SIGN_HEIGHT;
+  const signLeft = buffer.width - signWidth - SIGN_MARGIN;
+  const signTop = Math.max(8, layout.baselineY - signHeight - 18);
+  const wood = palette.index("#684c2e");
+  const woodLight = palette.index("#8b6840");
+  const post = palette.index("#5a4027");
+  const label = palette.index("#d9c79d");
+  const value = palette.index("#fff3ce");
+
+  buffer.fillRect(signLeft, signTop, signWidth, signHeight, wood);
+  buffer.fillRect(signLeft + 5, signTop + 5, signWidth - 10, signHeight - 10, woodLight);
+  buffer.fillRect(signLeft + 14, signTop + signHeight, 10, 20, post);
+  buffer.fillRect(signLeft + signWidth - 24, signTop + signHeight, 10, 20, post);
+
+  const statsPeriod = config.experience.stats.period;
+  const total = statsPeriod === "calendar-year"
+    ? plan.metrics.calendarYearTotal
+    : plan.metrics.displayedTotal;
+  const width = signWidth - 28;
+  const showStreak = config.experience.stats.showStreak;
+  const showTotal = config.experience.stats.showTotal;
+  const columnWidth = Math.floor(width / ((showStreak ? 1 : 0) + (showTotal ? 1 : 0) || 1));
+  let cursor = signLeft + 14;
+  if (showStreak) {
+    drawText(buffer, palette, "STREAK", cursor, signTop + 12, label, 1);
+    drawText(buffer, palette, `${plan.metrics.currentStreak} DAYS`, cursor, signTop + 27, value, 1);
+    cursor += columnWidth;
+  }
+  if (showTotal) {
+    drawText(buffer, palette, statsPeriod === "calendar-year" ? "YEAR" : "53 WEEKS", cursor, signTop + 12, label, 1);
+    drawText(buffer, palette, `${total}`, cursor, signTop + 27, value, 1);
+  }
+}
+
+function drawIdentity(
+  buffer: FrameBuffer,
+  palette: Palette,
+  config: ResolvedConfig,
+  plan: ScenePlan,
+  layout: SceneLayout,
+): void {
+  const name = plan.identity.name.trim().toUpperCase();
+  const role = plan.identity.role.trim().toUpperCase();
+  const textColor = palette.index("#eee9ff");
+  const roleColor = palette.index("#87dba8");
+  if (plan.identity.style === "combined-sign") {
+    const signLeft = Math.max(10, buffer.width - Math.min(246, Math.floor(buffer.width * 0.27)) - SIGN_MARGIN);
+    const signTop = Math.max(8, layout.baselineY - SIGN_HEIGHT - 84);
+    buffer.fillRect(signLeft, signTop, Math.min(246, Math.floor(buffer.width * 0.27)), 39, palette.index("#684c2e"));
+    drawText(buffer, palette, name.slice(0, 14), signLeft + 10, signTop + 7, textColor, 1);
+    drawText(buffer, palette, role.slice(0, 22), signLeft + 10, signTop + 22, roleColor, 1);
+    return;
+  }
+
+  const left = Math.max(10, Math.floor(buffer.width * 0.07));
+  const top = Math.max(8, Math.floor(buffer.height * 0.12));
+  drawText(buffer, palette, name.slice(0, 16), left, top, textColor, 1);
+  drawText(buffer, palette, role.slice(0, 24), left, top + 9, roleColor, 1);
+}
+
+function drawLantern(
+  buffer: FrameBuffer,
+  palette: Palette,
+  layout: SceneLayout,
+  frameIndex: number,
+  frameCount: number,
+): void {
+  const x = layout.gridLeft + layout.gridWidth - 28;
+  const y = layout.baselineY - 34;
+  const glow = palette.index("#f5dca1");
+  const phase = Math.floor((frameIndex / frameCount) * 4) % 2;
+  buffer.fillRect(x + 4, y - 7, 6, 3, glow);
+  buffer.fillRect(x + 2, y - 4, 10, 13, palette.index(phase === 0 ? "#8b6840" : "#684c2e"));
+  buffer.fillRect(x + 5, y - 1, 4, 7, glow);
+  buffer.fillRect(x + 4, y + 9, 6, 2, palette.index("#5a4027"));
+}
+
+function drawVignette(
+  buffer: FrameBuffer,
+  palette: Palette,
+  config: ResolvedConfig,
+  layout: SceneLayout,
+  plan: ScenePlan,
+  characterX: number,
+  frameIndex: number,
+  frameCount: number,
+): void {
+  const x = Math.max(6, Math.min(buffer.width - 24, characterX + 36));
+  const y = layout.baselineY - 5;
+  const green = palette.index("#96e6a5");
+  const purple = palette.index("#c7a0ef");
+  const warm = palette.index("#f5dca1");
+  const phase = Math.floor((frameIndex / frameCount) * 6) % 2;
+
+  if (plan.vignette === "water") {
+    buffer.fillRect(x, y - 12, 5, 12, palette.index("#8da8b5"));
+    buffer.fillRect(x - 2, y - 15, 9, 4, palette.index("#496c76"));
+    buffer.fillRect(x + 8, y - 2, 13, 2, palette.index("#a7d9df"));
+    return;
+  }
+  if (plan.vignette === "read") {
+    buffer.fillRect(x, y - 12, 12, 8, warm);
+    buffer.fillRect(x + 5, y - 13, 2, 10, palette.index("#8b6840"));
+    return;
+  }
+  if (plan.vignette === "nap") {
+    drawText(buffer, palette, phase === 0 ? "Z" : "Z Z", x, y - 23, purple, 1);
+    return;
+  }
+  if (plan.vignette === "rain-watch") {
+    buffer.fillRect(x, y - 26, 18, 3, palette.index("#273e53"));
+    buffer.fillRect(x + 5, y - 29, 9, 3, palette.index("#273e53"));
+    buffer.fillRect(x + 2, y - 20, 2, 7, palette.index("#a7d9df"));
+    buffer.fillRect(x + 12, y - 17, 2, 7, palette.index("#a7d9df"));
+    return;
+  }
+  if (plan.vignette === "puddle-hop") {
+    buffer.fillRect(x, y, 22, 2, palette.index("#a7d9df"));
+    buffer.fillRect(x + 5, y + 3, 12, 1, palette.index("#8da8b5"));
+    return;
+  }
+  if (plan.vignette === "celebrate") {
+    const sparkles: readonly [number, number][] = [[0, -20], [12, -27], [24, -17], [9, -8]];
+    for (const [offsetX, offsetY] of sparkles) {
+      buffer.fillRect(x + offsetX, y + offsetY, 3, 3, phase === 0 ? warm : purple);
+    }
+    return;
+  }
+
+  const fireflies: readonly [number, number][] = [[0, -18], [14, -26], [28, -14]];
+  for (const [offsetX, offsetY] of fireflies) {
+    buffer.fillRect(x + offsetX, y + offsetY, 3, 3, phase === 0 ? green : warm);
+  }
+  void config;
+}
+
+function seasonSkyColor(background: string, season: Season): string {
+  const seasonTint: Record<Season, string> = {
+    spring: "#275b52",
+    summer: "#2d4569",
+    autumn: "#68433e",
+    winter: "#283b59",
+  };
+  return mixHex(background, seasonTint[season], 0.28);
 }
 
 function drawBaseline(

@@ -6,6 +6,7 @@ import {
   type UbeConfig,
   validateConfig,
 } from "./schema.js";
+import { normalizeExperience } from "../experience/defaults.js";
 
 export async function loadConfig(path: string): Promise<ResolvedConfig> {
   const configPath = resolve(path);
@@ -16,6 +17,7 @@ export async function loadConfig(path: string): Promise<ResolvedConfig> {
 
   return {
     ...config,
+    experience: normalizeExperience(config.experience),
     configPath,
     characterPath: resolve(configDirectory, config.character),
     outputPath: resolve(configDirectory, config.output.path),

@@ -20,6 +20,7 @@ describe("generate", () => {
     const directory = await mkdtemp(join(tmpdir(), "ube-gif-"));
     temporaryDirectories.push(directory);
     const outputPath = join(directory, "ube.gif");
+    const staticOutputPath = join(directory, "ube.png");
 
     const result = await generate({
       configPath: resolve("ube.config.json"),
@@ -28,14 +29,19 @@ describe("generate", () => {
       now: new Date("2026-08-13T12:00:00Z"),
     });
     const bytes = await readFile(outputPath);
+    const staticBytes = await readFile(staticOutputPath);
 
     expect(bytes.subarray(0, 6).toString("ascii")).toBe("GIF89a");
     expect(readLogicalScreen(bytes)).toEqual({ width: 960, height: 320 });
     expect(countSequence(bytes, [0x21, 0xf9, 0x04])).toBe(120);
     expect(bytes.includes(Buffer.from("NETSCAPE2.0", "ascii"))).toBe(true);
     expect(bytes.at(-1)).toBe(0x3b);
+    expect(staticBytes.subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
     expect(result).toEqual({
       path: outputPath,
+      staticPath: staticOutputPath,
       frames: 120,
       width: 960,
       height: 320,
