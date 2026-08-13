@@ -20,6 +20,25 @@ const CHARACTER_STRIDE_CELLS = 3;
 const SIGN_HEIGHT = 54;
 const SIGN_MARGIN = 14;
 const PIXEL_SCALE = 2;
+const MOON_CELL_SIZE = 3;
+const MOON_MASK = [
+  "  1111 ",
+  " 111111",
+  "1111111",
+  "1111111",
+  "1111111",
+  " 111111",
+  "  1111 ",
+] as const;
+const MOON_CUTOUT = [
+  "    111",
+  "   1111",
+  "   1111",
+  "   1111",
+  "   1111",
+  "    111",
+  "     1 ",
+] as const;
 
 export interface SceneLayout {
   gridLeft: number;
@@ -194,11 +213,46 @@ function drawBackground(
   const moonY = 34 + Math.round(Math.sin((frameIndex / frameCount) * Math.PI * 2) * 2);
   const moon = palette.index("#f5dca1");
   const shadow = topColor;
-  buffer.fillRect(moonX, moonY, 22, 22, moon);
-  buffer.fillRect(moonX + 7, moonY - 3, 22, 22, shadow);
+  drawMoon(buffer, moonX, moonY, moon, shadow);
 
   drawStars(buffer, palette, plan.seed);
   drawWeather(buffer, palette, plan.weather, frameIndex, frameCount);
+}
+
+function drawMoon(
+  buffer: FrameBuffer,
+  left: number,
+  top: number,
+  moonColor: number,
+  shadowColor: number,
+): void {
+  for (let row = 0; row < MOON_MASK.length; row += 1) {
+    const maskRow = MOON_MASK[row] as string;
+    for (let column = 0; column < maskRow.length; column += 1) {
+      if (maskRow[column] !== "1") continue;
+      buffer.fillRect(
+        left + column * MOON_CELL_SIZE,
+        top + row * MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        moonColor,
+      );
+    }
+  }
+
+  for (let row = 0; row < MOON_CUTOUT.length; row += 1) {
+    const cutoutRow = MOON_CUTOUT[row] as string;
+    for (let column = 0; column < cutoutRow.length; column += 1) {
+      if (cutoutRow[column] !== "1") continue;
+      buffer.fillRect(
+        left + column * MOON_CELL_SIZE,
+        top + row * MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        shadowColor,
+      );
+    }
+  }
 }
 
 function drawStars(buffer: FrameBuffer, palette: Palette, seed: number): void {

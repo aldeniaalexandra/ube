@@ -2564,6 +2564,25 @@ var CHARACTER_GRAPH_GAP = 8;
 var CHARACTER_STRIDE_CELLS = 3;
 var SIGN_HEIGHT = 54;
 var SIGN_MARGIN = 14;
+var MOON_CELL_SIZE = 3;
+var MOON_MASK = [
+  "  1111 ",
+  " 111111",
+  "1111111",
+  "1111111",
+  "1111111",
+  " 111111",
+  "  1111 "
+];
+var MOON_CUTOUT = [
+  "    111",
+  "   1111",
+  "   1111",
+  "   1111",
+  "   1111",
+  "    111",
+  "     1 "
+];
 function createScene(config, character) {
   const layout = createLayout(config.output.width, config.output.height);
   const palette = createPalette(config, character);
@@ -2690,10 +2709,37 @@ function drawBackground(buffer, palette, config, plan, frameIndex, frameCount) {
   const moonY = 34 + Math.round(Math.sin(frameIndex / frameCount * Math.PI * 2) * 2);
   const moon = palette.index("#f5dca1");
   const shadow = topColor;
-  buffer.fillRect(moonX, moonY, 22, 22, moon);
-  buffer.fillRect(moonX + 7, moonY - 3, 22, 22, shadow);
+  drawMoon(buffer, moonX, moonY, moon, shadow);
   drawStars(buffer, palette, plan.seed);
   drawWeather(buffer, palette, plan.weather, frameIndex, frameCount);
+}
+function drawMoon(buffer, left, top, moonColor, shadowColor) {
+  for (let row = 0; row < MOON_MASK.length; row += 1) {
+    const maskRow = MOON_MASK[row];
+    for (let column = 0; column < maskRow.length; column += 1) {
+      if (maskRow[column] !== "1") continue;
+      buffer.fillRect(
+        left + column * MOON_CELL_SIZE,
+        top + row * MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        moonColor
+      );
+    }
+  }
+  for (let row = 0; row < MOON_CUTOUT.length; row += 1) {
+    const cutoutRow = MOON_CUTOUT[row];
+    for (let column = 0; column < cutoutRow.length; column += 1) {
+      if (cutoutRow[column] !== "1") continue;
+      buffer.fillRect(
+        left + column * MOON_CELL_SIZE,
+        top + row * MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        MOON_CELL_SIZE,
+        shadowColor
+      );
+    }
+  }
 }
 function drawStars(buffer, palette, seed) {
   const color = palette.index("#8ee9ad");

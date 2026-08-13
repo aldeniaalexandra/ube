@@ -10,9 +10,9 @@ import type { ContributionCalendar, RawContributionDay } from "../../src/contrib
 import { createScene, type Scene } from "../../src/render/scene.js";
 
 const EXPECTED_FRAME_HASHES = [
-  "c90a4d9ef91704342918d120c874ed1174f4592981615fdba123d22046ab7e0e",
-  "c47d896b296793f25f56235518ea5ba74889e1057dea6f6cfc8b2c4447ed0823",
-  "4d1da46658d4347edd70a91b8a4611b0541dcaa292952ffd9353c4c599770663",
+  "e58d116149b7a37431d832575f5a1673c53d1538a914b02074924c1b3a744923",
+  "89ada6103578e5f66c3dcaf0306b04ad42dc65a6780b32d6619b29f45d989588",
+  "6acefafb356b12368497b5a79fc3e07cd935b2778847026aed5c40527e9ba942",
 ];
 
 let scene: Scene;
@@ -57,6 +57,23 @@ describe("createScene", () => {
 
     expect(woodIndex).toBeGreaterThanOrEqual(0);
     expect([...frame.pixels].filter((pixel) => pixel === woodIndex).length).toBeGreaterThan(100);
+  });
+
+  it("renders the moon as a stepped crescent instead of a square corner", () => {
+    const frameIndex = 60;
+    const frame = scene.render(calendar, frameIndex);
+    const moonIndex = frame.palette.findIndex(
+      (color) => color[0] === 245 && color[1] === 220 && color[2] === 161,
+    );
+    const frameCount = Math.round(config.output.fps * config.output.durationSeconds);
+    const moonX = Math.max(26, frame.width - 90);
+    const moonY = 34 + Math.round(Math.sin((frameIndex / frameCount) * Math.PI * 2) * 2);
+    const pixel = (x: number, y: number): number => frame.pixels[y * frame.width + x] as number;
+
+    expect(moonIndex).toBeGreaterThanOrEqual(0);
+    expect(pixel(moonX, moonY)).toBe(frame.pixels[0]);
+    expect(pixel(moonX + 9, moonY)).toBe(moonIndex);
+    expect(pixel(moonX + 21, moonY + 9)).toBe(frame.pixels[0]);
   });
 
   it("produces stable entrance, midpoint, and exit frames", () => {
