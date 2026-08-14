@@ -2500,6 +2500,7 @@ var GLYPHS = {
   "-": ["000", "000", "111", "000", "000"],
   "/": ["001", "001", "010", "100", "100"],
   "'": ["010", "010", "000", "000", "000"],
+  " ": ["000", "000", "000", "000", "000"],
   "?": ["110", "001", "010", "000", "010"]
 };
 function drawText(buffer, palette, text, x, y, paletteIndex, scale) {
@@ -2527,6 +2528,22 @@ function drawText(buffer, palette, text, x, y, paletteIndex, scale) {
     cursorX += (glyphWidth + GLYPH_GAP) * scale;
   }
   return Math.max(0, cursorX - x - GLYPH_GAP * scale);
+}
+function measureText(text, scale) {
+  if (!Number.isInteger(scale) || scale < 1) {
+    throw new RangeError("text scale must be a positive integer");
+  }
+  let width = 0;
+  for (const character of text.toUpperCase()) {
+    const glyph = GLYPHS[character] ?? GLYPHS["?"];
+    const glyphWidth = glyph[0]?.length ?? GLYPH_WIDTH;
+    width += (glyphWidth + GLYPH_GAP) * scale;
+  }
+  return Math.max(0, width - GLYPH_GAP * scale);
+}
+function drawTextWithShadow(buffer, palette, text, x, y, color, shadowColor, scale) {
+  drawText(buffer, palette, text, x + 1, y + 1, shadowColor, scale);
+  return drawText(buffer, palette, text, x, y, color, scale);
 }
 
 // src/render/primitives.ts
@@ -2840,10 +2857,11 @@ function drawGardenSign(buffer, palette, config, layout, plan) {
     postHeight
   } = layout.sign;
   const wood = palette.index("#684c2e");
-  const woodLight = palette.index("#8b6840");
+  const woodLight = palette.index("#77583a");
   const post = palette.index("#5a4027");
-  const label = palette.index("#d9c79d");
-  const value = palette.index("#fff3ce");
+  const label = palette.index("#ffe9b3");
+  const value = palette.index("#ffffff");
+  const outline = palette.index("#3d2b1a");
   buffer.fillRect(signLeft, signTop, signWidth, signHeight, wood);
   buffer.fillRect(signLeft + 5, signTop + 5, signWidth - 10, signHeight - 10, woodLight);
   if (postHeight > 0) {
@@ -2856,15 +2874,18 @@ function drawGardenSign(buffer, palette, config, layout, plan) {
   const showStreak = config.experience.stats.showStreak;
   const showTotal = config.experience.stats.showTotal;
   const columnWidth = Math.floor(width / ((showStreak ? 1 : 0) + (showTotal ? 1 : 0) || 1));
+  const valueScale = (text) => measureText(text, 2) <= columnWidth ? 2 : 1;
   let cursor = signLeft + 14;
   if (showStreak) {
-    drawText(buffer, palette, "STREAK", cursor, signTop + 12, label, 1);
-    drawText(buffer, palette, `${plan.metrics.currentStreak} DAYS`, cursor, signTop + 27, value, 1);
+    drawTextWithShadow(buffer, palette, "STREAK", cursor, signTop + 12, label, outline, 1);
+    const days = `${plan.metrics.currentStreak} DAYS`;
+    drawTextWithShadow(buffer, palette, days, cursor, signTop + 27, value, outline, valueScale(days));
     cursor += columnWidth;
   }
   if (showTotal) {
-    drawText(buffer, palette, statsPeriod === "calendar-year" ? "YEAR" : "53 WEEKS", cursor, signTop + 12, label, 1);
-    drawText(buffer, palette, `${total}`, cursor, signTop + 27, value, 1);
+    const caption = statsPeriod === "calendar-year" ? "YEAR" : "53 WEEKS";
+    drawTextWithShadow(buffer, palette, caption, cursor, signTop + 12, label, outline, 1);
+    drawTextWithShadow(buffer, palette, `${total}`, cursor, signTop + 27, value, outline, valueScale(`${total}`));
   }
 }
 function drawIdentity(buffer, palette, plan, layout) {

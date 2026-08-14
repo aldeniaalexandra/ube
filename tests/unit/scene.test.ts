@@ -10,9 +10,9 @@ import type { ContributionCalendar, RawContributionDay } from "../../src/contrib
 import { createScene, type Scene } from "../../src/render/scene.js";
 
 const EXPECTED_FRAME_HASHES = [
-  "1751a4da043a87efa4e2414e6e7358a20fa11dc8fb7f24919925be53df68a4fb",
-  "a341ae6af5bc1564b375785b496cc07be740615998050faea3f1d41eaca204f9",
-  "33396bb926805fbbe3471912e6842730d75faf6d63f893ce6c9308572a79d366",
+  "d3232e6095c885a122185bc0bbcf5b6bd6a461c31cfc8de97ff37bb68596142d",
+  "841191fb957414642bdf7a743b01909868fbdc247262361b3b939768f7a4ca24",
+  "2d234f4eac324f1e9dd5e790eb10866bcc8ee44292ee00b38996a59364278aaf",
 ];
 
 let scene: Scene;
@@ -52,7 +52,7 @@ describe("createScene", () => {
   it("renders a wooden Garden Sign layer above the contribution graph", () => {
     const frame = scene.render(calendar, 60);
     const woodIndex = frame.palette.findIndex(
-      (color) => color[0] === 139 && color[1] === 104 && color[2] === 64,
+      (color) => color[0] === 119 && color[1] === 88 && color[2] === 58,
     );
 
     expect(woodIndex).toBeGreaterThanOrEqual(0);

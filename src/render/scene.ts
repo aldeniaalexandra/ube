@@ -5,7 +5,7 @@ import type { ContributionCalendar, ContributionLevel } from "../contributions/t
 import { planScene } from "../experience/planner.js";
 import type { ScenePlan, Season, Weather } from "../experience/types.js";
 import { FrameBuffer } from "./framebuffer.js";
-import { drawText } from "./font.js";
+import { drawText, drawTextWithShadow, measureText } from "./font.js";
 import { Palette } from "./palette.js";
 import { drawSprite } from "./primitives.js";
 
@@ -389,10 +389,11 @@ function drawGardenSign(
     postHeight,
   } = layout.sign;
   const wood = palette.index("#684c2e");
-  const woodLight = palette.index("#8b6840");
+  const woodLight = palette.index("#77583a");
   const post = palette.index("#5a4027");
-  const label = palette.index("#d9c79d");
-  const value = palette.index("#fff3ce");
+  const label = palette.index("#ffe9b3");
+  const value = palette.index("#ffffff");
+  const outline = palette.index("#3d2b1a");
 
   buffer.fillRect(signLeft, signTop, signWidth, signHeight, wood);
   buffer.fillRect(signLeft + 5, signTop + 5, signWidth - 10, signHeight - 10, woodLight);
@@ -409,15 +410,19 @@ function drawGardenSign(
   const showStreak = config.experience.stats.showStreak;
   const showTotal = config.experience.stats.showTotal;
   const columnWidth = Math.floor(width / ((showStreak ? 1 : 0) + (showTotal ? 1 : 0) || 1));
+  const valueScale = (text: string): number =>
+    measureText(text, 2) <= columnWidth ? 2 : 1;
   let cursor = signLeft + 14;
   if (showStreak) {
-    drawText(buffer, palette, "STREAK", cursor, signTop + 12, label, 1);
-    drawText(buffer, palette, `${plan.metrics.currentStreak} DAYS`, cursor, signTop + 27, value, 1);
+    drawTextWithShadow(buffer, palette, "STREAK", cursor, signTop + 12, label, outline, 1);
+    const days = `${plan.metrics.currentStreak} DAYS`;
+    drawTextWithShadow(buffer, palette, days, cursor, signTop + 27, value, outline, valueScale(days));
     cursor += columnWidth;
   }
   if (showTotal) {
-    drawText(buffer, palette, statsPeriod === "calendar-year" ? "YEAR" : "53 WEEKS", cursor, signTop + 12, label, 1);
-    drawText(buffer, palette, `${total}`, cursor, signTop + 27, value, 1);
+    const caption = statsPeriod === "calendar-year" ? "YEAR" : "53 WEEKS";
+    drawTextWithShadow(buffer, palette, caption, cursor, signTop + 12, label, outline, 1);
+    drawTextWithShadow(buffer, palette, `${total}`, cursor, signTop + 27, value, outline, valueScale(`${total}`));
   }
 }
 
